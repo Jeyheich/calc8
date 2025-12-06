@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prenotazione Calcetto Online</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #1565c0; } /* Blu per il tema online */
+        
+        .form-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+        button { background-color: #1565c0; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #0d47a1; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+
+        h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 30px; font-size: 1.2rem; }
+        .list-container { margin-bottom: 20px; }
+        .player-card { display: flex; justify-content: space-between; padding: 10px; background: #f9f9f9; border-bottom: 1px solid #eee; align-items: center; }
+        .player-card:nth-child(odd) { background: #fff; }
+        .player-info { font-weight: 500; }
+        .player-time { font-size: 0.85rem; color: #666; background: #e3f2fd; padding: 4px 8px; border-radius: 12px; }
+        .counter { float: right; font-size: 0.9rem; color: #555; font-weight: normal; }
+        
+        .reserves .player-time { background: #fff3e0; color: #e65100; }
+        
+        .reset-btn { background-color: #d32f2f; margin-top: 20px; width: 100%; }
+        .reset-btn:hover { background-color: #b71c1c; }
+        
+        #status-msg { text-align: center; font-size: 0.9rem; color: #666; margin-bottom: 10px; min-height: 20px;}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>⚽ Calcetto Live</h1>
+    <div id="status-msg">Caricamento lista...</div>
+    
+    <div class="form-group">
+        <input type="text" id="nome" placeholder="Nome" required>
+        <input type="text" id="cognome" placeholder="Cognome" required>
+        <button id="btn-prenota">Prenotati</button>
+    </div>
+
+    <div class="list-container">
+        <h2>Titolari <span class="counter" id="count-titolari">0/16</span></h2>
+        <div id="lista-titolari"></div>
+    </div>
+
+    <div class="list-container reserves">
+        <h2>Riserve <span class="counter" id="count-riserve">0/16</span></h2>
+        <div id="lista-riserve"></div>
+    </div>
+
+    <button class="reset-btn" id="btn-reset">Reset Nuova Partita</button>
+</div>
+
+<script type="module">
+    // Importa le funzioni necessarie da Firebase
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // --- CONFIGURAZIONE FIREBASE ---
+    // 1. Sostituisci tutto l'oggetto qui sotto con quello che ti ha dato Firebase
+    const firebaseConfig = {
+  apiKey: "AIzaSyADBVqklh5V0e6HoHdhaMepc0lMlD_dS2w",
+  authDomain: "calc8-c2b22.firebaseapp.com",
+  projectId: "calc8-c2b22",
+  storageBucket: "calc8-c2b22.firebasestorage.app",
+  messagingSenderId: "694548999338",
+  appId: "1:694548999338:web:0635e7ca4f3edf63b874d3"
+};
+    // -------------------------------
+
+    // Inizializza Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const collectionName = "prenotazioni_calcetto"; // Nome della tabella nel DB
+
+    const MAX_TITOLARI = 16;
+    const MAX_RISERVE = 16;
+    let totaleGiocatori = 0;
+
+    // ASCOLTO IN TEMPO REALE (La magia avviene qui)
+    // Questa funzione scatta ogni volta che il database cambia (qualcuno si iscrive)
+    const q = query(collection(db, collectionName), orderBy("timestamp"));
+    onSnapshot(q, (snapshot) => {
+        const listaTitolari = document.getElementById('lista-titolari');
+        const listaRiserve = document.getElementById('lista-riserve');
+        listaTitolari.innerHTML = '';
+        listaRiserve.innerHTML = '';
+        
+        let giocatori = [];
+        snapshot.forEach((doc) => {
+            giocatori.push({ id: doc.id, ...doc.data() });
+        });
+
+        totaleGiocatori = giocatori.length;
+        document.getElementById('status-msg').innerText = "Lista aggiornata in tempo reale 🟢";
+
+        giocatori.forEach((g, index) => {
+            const div = document.createElement('div');
+            div.className = 'player-card';
+            div.innerHTML = `
+                <span class="player-info">${index + 1}. ${g.nome} ${g.cognome}</span>
+                <span class="player-time">🕒 ${g.ora}</span>
+            `;
+
+            if (index < MAX_TITOLARI) {
+                listaTitolari.appendChild(div);
+            } else if (index < (MAX_TITOLARI + MAX_RISERVE)) {
+                listaRiserve.appendChild(div);
+            }
+        });
+
+        // Aggiorna contatori
+        const numTitolari = Math.min(giocatori.length, MAX_TITOLARI);
+        const numRiserve = Math.max(0, Math.min(giocatori.length - MAX_TITOLARI, MAX_RISERVE));
+        document.getElementById('count-titolari').innerText = `${numTitolari}/${MAX_TITOLARI}`;
+        document.getElementById('count-riserve').innerText = `${numRiserve}/${MAX_RISERVE}`;
+    });
+
+    // Funzione per aggiungere giocatore
+    document.getElementById('btn-prenota').addEventListener('click', async () => {
+        const nomeIn = document.getElementById('nome');
+        const cognomeIn = document.getElementById('cognome');
+        const nome = nomeIn.value.trim();
+        const cognome = cognomeIn.value.trim();
+
+        if (!nome || !cognome) { alert("Inserisci nome e cognome!"); return; }
+        if (totaleGiocatori >= (MAX_TITOLARI + MAX_RISERVE)) { alert("Liste piene!"); return; }
+
+        document.getElementById('status-msg').innerText = "Salvataggio in corso...";
+        
+        const adesso = new Date();
+        const orario = adesso.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+
+        try {
+            await addDoc(collection(db, collectionName), {
+                nome: nome,
+                cognome: cognome,
+                ora: orario,
+                timestamp: Date.now()
+            });
+            // Pulisci campi
+            nomeIn.value = '';
+            cognomeIn.value = '';
+        } catch (e) {
+            console.error("Errore: ", e);
+            alert("Errore nel salvataggio. Controlla la console.");
+        }
+    });
+
+    // Funzione Reset (Cancella tutto dal database)
+    document.getElementById('btn-reset').addEventListener('click', async () => {
+        if(confirm("ATTENZIONE: Questo cancellerà la lista per TUTTI i partecipanti. Procedere?")) {
+            document.getElementById('status-msg').innerText = "Cancellazione in corso...";
+            const snapshot = await getDocs(collection(db, collectionName));
+            // Cancella uno a uno (Firebase non ha un "cancella tutto" semplice da client web per sicurezza)
+            const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+            await Promise.all(deletePromises);
+            document.getElementById('status-msg').innerText = "Lista resettata!";
+        }
+    });
+</script>
+
+</body>
+</html>
