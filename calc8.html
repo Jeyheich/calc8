@@ -10,6 +10,7 @@
         
         /* Titolo cliccabile per admin */
         h1 { text-align: center; color: #1565c0; margin-bottom: 5px; cursor: pointer; user-select: none; }
+        h1:active { transform: scale(0.98); }
         
         .info-box { background: #e3f2fd; color: #0d47a1; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-size: 1rem; border: 1px solid #bbdefb; font-weight: 500;}
         .status-closed { background: #ffebee; color: #c62828; border-color: #ffcdd2; }
@@ -17,7 +18,7 @@
         /* Stili Admin */
         .admin-active { border: 2px solid #d32f2f; background: #fffbfb; }
         .admin-panel { display: none; background: #ffebee; padding: 10px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ffcdd2; text-align: center; }
-        .btn-email { background-color: #f57c00; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 5px; width: 100%; }
+        .btn-email { background-color: #f57c00; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 5px; width: 100%; font-size: 0.9rem;}
         .btn-email:hover { background-color: #e65100; }
 
         .form-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -49,6 +50,7 @@
         .stat-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 0.9rem; border-bottom: 1px dashed #eee; }
         .badge-presenze { background: #2e7d32; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: bold;}
 
+        /* Bottone delete admin - rosso scuro */
         .btn-delete.admin-del { background: #b71c1c; color: white; border-color: #b71c1c; }
         .btn-delete { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 4px; cursor: pointer; font-size: 0.9rem; padding: 5px 10px; transition: all 0.2s; }
         .btn-delete:hover { background: #c62828; color: white; }
@@ -61,8 +63,8 @@
     
     <div id="admin-panel" class="admin-panel">
         <strong>🔧 Strumenti Admin Attivi</strong><br>
-        <span style="font-size:0.8rem">Puoi cancellare chiunque e ignorare i limiti.</span>
-        <button class="btn-email" id="btn-invia-email">📧 Prepara Email Convocazioni</button>
+        <span style="font-size:0.8rem">Limiti rimossi. Puoi cancellare chiunque.</span>
+        <button class="btn-email" id="btn-invia-email">📧 Crea Email Convocazioni</button>
     </div>
 
     <div id="info-box" class="info-box">Connessione al calendario...</div>
@@ -120,6 +122,7 @@
     let adminClicks = 0;
     const ADMIN_PASSWORD = "admin"; 
 
+    // Attivazione Admin con 3 click sul titolo
     document.getElementById('app-title').addEventListener('click', () => {
         adminClicks++;
         if (adminClicks === 3) {
@@ -127,8 +130,10 @@
             if (pwd === ADMIN_PASSWORD) {
                 isAdmin = true;
                 document.getElementById('main-container').classList.add('admin-active'); 
-                document.getElementById('admin-panel').style.display = 'block'; // Mostra pannello
+                document.getElementById('admin-panel').style.display = 'block'; 
                 alert("Modalità Admin ATTIVA");
+                // Ricalcoliamo le date e la lista per abilitare i bottoni
+                calcolaLogicaDate();
                 renderCurrentList(); 
             } else {
                 alert("Password Errata!");
@@ -137,23 +142,24 @@
         }
     });
 
-    // --- LOGICA EMAIL (NUOVA) ---
+    // --- LOGICA EMAIL ---
     document.getElementById('btn-invia-email').addEventListener('click', () => {
         if (!lastSnapshotDocs || lastSnapshotDocs.length === 0) {
             alert("La lista è vuota!");
             return;
         }
 
-        const dataLeggibile = formattaData(dataPartitaTarget);
+        // Formattazione data italiana per l'email
+        const [anno, mese, giorno] = dataPartitaTarget.split('-');
+        const dataLeggibile = `${giorno}/${mese}`;
+        
         let corpoEmail = `Ciao a tutti,%0D%0AEcco i convocati per la partita di Lunedì ${dataLeggibile}.%0D%0A%0D%0A⚽ TITOLARI:%0D%0A`;
 
-        // Aggiungi Titolari
         const titolari = lastSnapshotDocs.slice(0, MAX_TITOLARI);
         titolari.forEach((p, index) => {
             corpoEmail += `${index + 1}. ${p.nome} ${p.cognome}%0D%0A`;
         });
 
-        // Aggiungi Riserve se ci sono
         const riserve = lastSnapshotDocs.slice(MAX_TITOLARI, MAX_TITOLARI + MAX_RISERVE);
         if (riserve.length > 0) {
             corpoEmail += `%0D%0A⚠️ RISERVE:%0D%0A`;
@@ -163,43 +169,48 @@
         }
 
         corpoEmail += `%0D%0AA presto!`;
-
-        // Crea il link mailto e lo apre
         const oggetto = `Convocazioni Calcetto Lunedì ${dataLeggibile}`;
         window.location.href = `mailto:?subject=${oggetto}&body=${corpoEmail}`;
     });
 
-    // --- LOGICA TEMPORALE ---
+    // --- LOGICA TEMPORALE (FIX FUSO ORARIO) ---
     function calcolaLogicaDate() {
         const adesso = new Date();
-        const giornoSettimana = adesso.getDay(); 
+        const giornoSettimana = adesso.getDay(); // 0=Dom, 1=Lun...
         
         let giorniAlLunedi = (1 + 7 - giornoSettimana) % 7;
-        if (giornoSettimana === 1) giorniAlLunedi = 0; 
-
+        // Se oggi è Lunedì, rimane oggi
+        
         const dataLunedi = new Date(adesso);
         dataLunedi.setDate(adesso.getDate() + giorniAlLunedi);
-        dataPartitaTarget = dataLunedi.toISOString().split('T')[0];
+        
+        // Costruzione MANUALE della stringa data (YYYY-MM-DD) usando l'ora locale
+        // Questo risolve il bug che mostrava il giorno prima (es. 07/12 invece di 08/12)
+        const y = dataLunedi.getFullYear();
+        const m = String(dataLunedi.getMonth() + 1).padStart(2, '0');
+        const d = String(dataLunedi.getDate()).padStart(2, '0');
+        dataPartitaTarget = `${y}-${m}-${d}`;
 
         const dataApertura = new Date(dataLunedi);
-        dataApertura.setDate(dataLunedi.getDate() - 4); 
+        dataApertura.setDate(dataLunedi.getDate() - 4); // Giovedì precedente
         dataApertura.setHours(12, 0, 0, 0); 
 
         const dataChiusura = new Date(dataLunedi);
-        dataChiusura.setHours(23, 59, 59, 0);
+        dataChiusura.setHours(23, 59, 59, 999);
 
         const infoBox = document.getElementById('info-box');
         const btn = document.getElementById('btn-prenota');
 
-        if (adesso >= dataApertura && adesso <= dataChiusura) {
+        // L'Admin ignora sempre gli orari
+        if (isAdmin || (adesso >= dataApertura && adesso <= dataChiusura)) {
             iscrizioniAperte = true;
             infoBox.className = "info-box";
-            infoBox.innerHTML = `🟢 Iscrizioni <b>APERTE</b> per Lunedì <b>${formattaData(dataPartitaTarget)}</b>`;
+            infoBox.innerHTML = `🟢 Iscrizioni <b>APERTE</b> per Lunedì <b>${d}/${m}</b>`;
             
-            if (!prenotazioneUtenteLocale) {
+            if (!prenotazioneUtenteLocale && !isAdmin) {
                 btn.disabled = false;
                 btn.innerText = "Prenotati Ora";
-            } else {
+            } else if (!isAdmin) {
                 btn.disabled = true;
                 btn.innerText = "Sei già iscritto";
             }
@@ -207,19 +218,15 @@
             iscrizioniAperte = false;
             infoBox.className = "info-box status-closed";
             infoBox.innerHTML = `🔴 Iscrizioni CHIUSE.<br>Apriranno Giovedì alle 12:00.`;
-            btn.disabled = true;
-            btn.innerText = "Attendi Apertura";
+            if(!isAdmin) {
+                btn.disabled = true;
+                btn.innerText = "Attendi Apertura";
+            }
         }
     }
 
-    function formattaData(str) {
-        if(!str) return "...";
-        const [y, m, d] = str.split('-');
-        return `${d}/${m}`;
-    }
-
     calcolaLogicaDate();
-    setInterval(calcolaLogicaDate, 60000);
+    setInterval(calcolaLogicaDate, 60000); // Ricalcola ogni minuto
 
     let lastSnapshotDocs = [];
 
@@ -242,11 +249,14 @@
         listaTitolari.innerHTML = '';
         listaRiserve.innerHTML = '';
 
+        // Se Admin, abilita sempre il bottone
         if(isAdmin) {
-             document.getElementById('btn-prenota').disabled = false;
-             document.getElementById('btn-prenota').innerText = "Prenota (Admin Mode)";
+             const btn = document.getElementById('btn-prenota');
+             btn.disabled = false;
+             btn.innerText = "Prenota (Admin Mode)";
         }
 
+        // Controllo coerenza cache
         const myPrenotazione = docs.find(d => d.id === prenotazioneUtenteLocale);
         if (!myPrenotazione && !isAdmin) {
             localStorage.removeItem('mio_id_prenotazione');
@@ -257,12 +267,14 @@
             }
         }
 
+        // Contatori
         const countTitolari = Math.min(docs.length, MAX_TITOLARI);
         const countRiserve = Math.max(0, Math.min(docs.length - MAX_TITOLARI, MAX_RISERVE));
 
         document.getElementById('count-titolari').innerText = `${countTitolari}/${MAX_TITOLARI}`;
         document.getElementById('count-riserve').innerText = `${countRiserve}/${MAX_RISERVE}`;
 
+        // Blocco Liste Piene (solo non-admin)
         if (iscrizioniAperte && !prenotazioneUtenteLocale && !isAdmin) {
             const btn = document.getElementById('btn-prenota');
             if (docs.length >= (MAX_TITOLARI + MAX_RISERVE)) {
@@ -301,14 +313,14 @@
         });
     }
 
-    // --- CARICAMENTO STATS ---
+    // --- CARICAMENTO STATISTICHE ---
     const qStats = query(collection(db, collStats), orderBy("presenze", "desc"));
     onSnapshot(qStats, (snapshot) => {
         const container = document.getElementById('lista-stats');
         container.innerHTML = '';
         let count = 0;
         snapshot.forEach(doc => {
-            if(count >= 10) return;
+            if(count >= 10) return; // Top 10
             const d = doc.data();
             const row = document.createElement('div');
             row.className = 'stat-row';
@@ -321,7 +333,7 @@
         });
     });
 
-    // --- AZIONI ---
+    // --- AZIONE: PRENOTA ---
     document.getElementById('btn-prenota').addEventListener('click', async () => {
         if (!iscrizioniAperte && !isAdmin) return;
         if (prenotazioneUtenteLocale && !isAdmin) { alert("Risulti già iscritto sul dispositivo!"); return; }
@@ -334,6 +346,7 @@
         btn.disabled = true;
         btn.innerText = "Verifica...";
 
+        // Formattazione
         const formatName = (str) => str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
         const nomeF = formatName(nome);
         const cognomeF = formatName(cognome);
@@ -341,6 +354,7 @@
         const statsId = `${nomeF.toLowerCase()}_${cognomeF.toLowerCase()}`.replace(/\s+/g, '');
         
         try {
+            // Check Doppioni (Se NON sono admin)
             if (!isAdmin) {
                 const qCheck = query(collection(db, collPrenotazioni), where("data_partita", "==", dataPartitaTarget), where("nome", "==", nomeF), where("cognome", "==", cognomeF));
                 const snapshotCheck = await getDocs(qCheck);
@@ -354,6 +368,7 @@
 
             btn.innerText = "Salvataggio...";
 
+            // 1. Salva Prenotazione
             const docRef = await addDoc(collection(db, collPrenotazioni), {
                 nome: nomeF,
                 cognome: cognomeF,
@@ -362,11 +377,13 @@
                 timestamp: Date.now()
             });
 
+            // 2. Salva Cache (solo se non Admin)
             if (!isAdmin) {
                 localStorage.setItem('mio_id_prenotazione', docRef.id);
                 prenotazioneUtenteLocale = docRef.id;
             }
 
+            // 3. Aggiorna Statistiche
             const statsRef = doc(db, collStats, statsId);
             const statsSnap = await getDoc(statsRef);
             if (statsSnap.exists()) {
@@ -391,6 +408,7 @@
         }
     });
 
+    // --- AZIONE: CANCELLA ---
     async function cancellaPrenotazione(idDoc, nomeCompletoOriginale) {
         let msg = "Sicuro di voler lasciare il posto?";
         if (isAdmin) msg = `ADMIN: Vuoi cancellare definitivamente ${nomeCompletoOriginale}?`;
@@ -398,15 +416,19 @@
         if(!confirm(msg)) return;
 
         try {
-            const statsId = nomeCompletoOriginale.toLowerCase().split(' ').join('_');
+            // Ricostruzione ID Stats (stesso metodo della prenotazione)
+            const statsId = nomeCompletoOriginale.toLowerCase().replace(/\s+/g, '_');
 
+            // 1. Cancella dal DB
             await deleteDoc(doc(db, collPrenotazioni, idDoc));
 
+            // 2. Rimuovi Cache (solo se sono io)
             if (idDoc === prenotazioneUtenteLocale) {
                 localStorage.removeItem('mio_id_prenotazione');
                 prenotazioneUtenteLocale = null;
             }
             
+            // 3. Rimuovi Presenza (-1)
             const statsRef = doc(db, collStats, statsId);
             await updateDoc(statsRef, { presenze: increment(-1) });
 
