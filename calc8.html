@@ -3,107 +3,171 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prenotazione Calcetto</title>
+    <title>Prenotazione Calc8</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         h1 { text-align: center; color: #1565c0; margin-bottom: 5px; }
-        .subtitle { text-align: center; color: #666; margin-bottom: 20px; font-size: 0.9rem; }
         
+        /* Conto alla rovescia / Info Data */
+        .info-box { background: #e3f2fd; color: #0d47a1; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-size: 1rem; border: 1px solid #bbdefb; font-weight: 500;}
+        .status-closed { background: #ffebee; color: #c62828; border-color: #ffcdd2; }
+        
+        /* Form */
         .form-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
-        button { background-color: #1565c0; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        button:hover { background-color: #0d47a1; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; }
+        input:focus { border-color: #1565c0; }
+        button#btn-prenota { background-color: #1565c0; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; flex: 0 0 100%; transition: background 0.2s; }
+        button#btn-prenota:hover { background-color: #0d47a1; }
+        button:disabled { background-color: #9e9e9e !important; cursor: not-allowed; opacity: 0.7; }
 
-        h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 30px; font-size: 1.2rem; }
+        /* Liste */
+        h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 30px; font-size: 1.1rem; color: #333; display: flex; justify-content: space-between; align-items: center;}
+        .badge-count { background: #eee; padding: 2px 8px; border-radius: 12px; font-size: 0.9rem; }
+        
         .list-container { margin-bottom: 20px; }
-        .player-card { display: flex; justify-content: space-between; padding: 10px; background: #f9f9f9; border-bottom: 1px solid #eee; align-items: center; }
-        .player-card:nth-child(odd) { background: #fff; }
-        .player-info { font-weight: 500; }
-        .player-time { font-size: 0.85rem; color: #666; background: #e3f2fd; padding: 4px 8px; border-radius: 12px; }
-        .counter { float: right; font-size: 0.9rem; color: #555; font-weight: normal; }
+        .player-card { display: flex; justify-content: space-between; padding: 12px; background: #fff; border-bottom: 1px solid #f0f0f0; align-items: center; transition: background 0.3s; }
+        .player-card:last-child { border-bottom: none; }
+        .player-card.is-me { background-color: #e8f5e9; border-left: 4px solid #4caf50; } /* Evidenzia me stesso */
         
+        .player-left { display: flex; align-items: center; gap: 10px; }
+        .player-index { color: #888; font-size: 0.9rem; min-width: 25px; font-weight: bold;}
+        .player-name { font-weight: 600; color: #333; }
+        
+        .player-right { display: flex; align-items: center; gap: 10px; }
+        .player-time { font-size: 0.75rem; color: #666; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; }
+        
+        /* Delete Button */
+        .btn-delete { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 4px; cursor: pointer; font-size: 0.9rem; padding: 5px 10px; transition: all 0.2s; }
+        .btn-delete:hover { background: #c62828; color: white; }
+
+        /* Riserve e Stats */
         .reserves .player-time { background: #fff3e0; color: #e65100; }
+        .reserves .player-index { color: #e65100; }
         
-        #status-msg { text-align: center; font-size: 0.9rem; color: #666; margin-bottom: 10px; min-height: 20px;}
-        .date-badge { display: block; text-align: center; background: #e8f5e9; color: #2e7d32; padding: 5px; border-radius: 4px; margin-bottom: 15px; font-weight: bold;}
+        .stats-container { margin-top: 40px; background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #eee; }
+        .stat-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 0.9rem; border-bottom: 1px dashed #eee; }
+        .badge-presenze { background: #2e7d32; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: bold;}
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>⚽ Calcetto Live</h1>
-    <div id="display-data-partita" class="date-badge">Caricamento data...</div>
-    <div id="status-msg">Connessione in corso...</div>
+    <h1>⚽ Partita del Lunedì</h1>
+    
+    <div id="info-box" class="info-box">Connessione al calendario...</div>
     
     <div class="form-group">
-        <input type="text" id="nome" placeholder="Nome" required>
-        <input type="text" id="cognome" placeholder="Cognome" required>
-        <button id="btn-prenota">Prenotati</button>
+        <input type="text" id="nome" placeholder="Nome" required autocomplete="off">
+        <input type="text" id="cognome" placeholder="Cognome" required autocomplete="off">
+        <button id="btn-prenota" disabled>Caricamento...</button>
     </div>
 
     <div class="list-container">
-        <h2>Titolari <span class="counter" id="count-titolari">0/16</span></h2>
+        <h2>Titolari <span class="badge-count" id="count-titolari">0/16</span></h2>
         <div id="lista-titolari"></div>
     </div>
 
     <div class="list-container reserves">
-        <h2>Riserve <span class="counter" id="count-riserve">0/16</span></h2>
+        <h2>Riserve <span class="badge-count" id="count-riserve">0/16</span></h2>
         <div id="lista-riserve"></div>
+    </div>
+
+    <div class="stats-container">
+        <h2 style="margin-top:0; border:none; font-size:1rem;">🏆 Classifica Presenze</h2>
+        <div id="lista-stats"></div>
     </div>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, setDoc, getDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // --- LA TUA CONFIGURAZIONE FIREBASE ---
+    // --- CONFIGURAZIONE (Già inserita la tua) ---
     const firebaseConfig = {
-        apiKey: "AIzaSyADBVqklh5V0e6HoHdhaMepc0lMlD_dS2w",
-        authDomain: "calc8-c2b22.firebaseapp.com",
-        projectId: "calc8-c2b22",
-        storageBucket: "calc8-c2b22.firebasestorage.app",
-        messagingSenderId: "694548999338",
-        appId: "1:694548999338:web:0635e7ca4f3edf63b874d3"
+      apiKey: "AIzaSyADBVqklh5V0e6HoHdhaMepc0lMlD_dS2w",
+      authDomain: "calc8-c2b22.firebaseapp.com",
+      projectId: "calc8-c2b22",
+      storageBucket: "calc8-c2b22.firebasestorage.app",
+      messagingSenderId: "694548999338",
+      appId: "1:694548999338:web:0635e7ca4f3edf63b874d3"
     };
-    // --------------------------------------
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const collectionName = "prenotazioni_calcetto";
+    const collPrenotazioni = "prenotazioni_calcetto";
+    const collStats = "statistiche_giocatori";
 
-    // --- LOGICA DATE (Reset settimanale automatico) ---
-    function getDataPartita() {
-        const oggi = new Date();
-        const giornoSettimana = oggi.getDay(); // 0=Dom, 1=Lun, ... 4=Giov ... 6=Sab
-        
-        // Calcolo giorni mancanti al prossimo Giovedì (4)
-        // Se oggi è Ven(5) o Sab(6), punta al prossimo. Se oggi è Dom(0)-Merc(3), punta a questo.
-        let giorniMancanti = (4 - giornoSettimana + 7) % 7;
-        
-        const dataTarget = new Date(oggi);
-        dataTarget.setDate(oggi.getDate() + giorniMancanti);
-        
-        return dataTarget.toISOString().split('T')[0];
-    }
-    
-    function formattaData(dataString) {
-        const [y, m, d] = dataString.split('-');
-        return `${d}/${m}/${y}`;
-    }
-
-    const dataCorrenteMatch = getDataPartita();
-    document.getElementById('display-data-partita').innerText = `Iscrizioni per Giovedì ${formattaData(dataCorrenteMatch)}`;
-
+    // --- VARIABILI GLOBALI ---
     const MAX_TITOLARI = 16;
     const MAX_RISERVE = 16;
-    let totaleGiocatori = 0;
+    let dataPartitaTarget = ""; 
+    let iscrizioniAperte = false;
+    // Cache locale dell'ID prenotazione per riconoscere l'utente
+    let prenotazioneUtenteLocale = localStorage.getItem('mio_id_prenotazione'); 
 
-    // --- QUERY CON FILTRO DATA ---
+    // --- LOGICA TEMPORALE (Giovedì h12 -> Lunedì h23) ---
+    function calcolaLogicaDate() {
+        const adesso = new Date();
+        const giornoSettimana = adesso.getDay(); // 0=Dom, 1=Lun, 4=Giov
+        
+        // Calcolo quanti giorni mancano al prossimo Lunedì
+        let giorniAlLunedi = (1 + 7 - giornoSettimana) % 7;
+        if (giornoSettimana === 1) giorniAlLunedi = 0; // Oggi è lunedì
+
+        const dataLunedi = new Date(adesso);
+        dataLunedi.setDate(adesso.getDate() + giorniAlLunedi);
+        dataPartitaTarget = dataLunedi.toISOString().split('T')[0];
+
+        // Finestra Temporale: Dal Giovedì precedente (h12) al Lunedì (h23)
+        const dataApertura = new Date(dataLunedi);
+        dataApertura.setDate(dataLunedi.getDate() - 4); // Giovedì
+        dataApertura.setHours(12, 0, 0, 0);
+
+        const dataChiusura = new Date(dataLunedi);
+        dataChiusura.setHours(23, 59, 59, 0);
+
+        const infoBox = document.getElementById('info-box');
+        const btn = document.getElementById('btn-prenota');
+
+        if (adesso >= dataApertura && adesso <= dataChiusura) {
+            iscrizioniAperte = true;
+            infoBox.className = "info-box";
+            infoBox.innerHTML = `🟢 Iscrizioni <b>APERTE</b> per Lunedì <b>${formattaData(dataPartitaTarget)}</b>`;
+            
+            // Gestione testo bottone in base allo stato
+            if (!prenotazioneUtenteLocale) {
+                btn.disabled = false;
+                btn.innerText = "Prenotati Ora";
+            } else {
+                btn.disabled = true;
+                btn.innerText = "Sei già iscritto";
+            }
+
+        } else {
+            iscrizioniAperte = false;
+            infoBox.className = "info-box status-closed";
+            infoBox.innerHTML = `🔴 Iscrizioni CHIUSE.<br>Apriranno Giovedì alle 12:00.`;
+            btn.disabled = true;
+            btn.innerText = "Attendi Apertura";
+        }
+    }
+
+    function formattaData(str) {
+        if(!str) return "...";
+        const [y, m, d] = str.split('-');
+        return `${d}/${m}`;
+    }
+
+    // Aggiornamento orario
+    calcolaLogicaDate();
+    setInterval(calcolaLogicaDate, 60000);
+
+    // --- CARICAMENTO REAL-TIME LISTA ---
+    // Ascolta solo le prenotazioni per la data del match
     const q = query(
-        collection(db, collectionName), 
-        where("data_partita", "==", dataCorrenteMatch),
+        collection(db, collPrenotazioni), 
+        where("data_partita", "==", dataPartitaTarget),
         orderBy("timestamp")
     );
 
@@ -113,75 +177,183 @@
         listaTitolari.innerHTML = '';
         listaRiserve.innerHTML = '';
         
-        let giocatori = [];
-        snapshot.forEach((doc) => {
-            giocatori.push({ id: doc.id, ...doc.data() });
-        });
-
-        totaleGiocatori = giocatori.length;
-        document.getElementById('status-msg').innerText = ""; 
-
-        if (giocatori.length === 0) {
-            document.getElementById('lista-titolari').innerHTML = '<div style="padding:10px; color:#999; text-align:center">Ancora nessun iscritto per questa data.</div>';
+        const docs = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+        
+        // Verifica se l'ID salvato in cache esiste ancora nel DB (o se è stato cancellato)
+        const myPrenotazione = docs.find(d => d.id === prenotazioneUtenteLocale);
+        if (!myPrenotazione) {
+            // Se avevo un ID locale ma non c'è nel DB, resetto
+            localStorage.removeItem('mio_id_prenotazione');
+            prenotazioneUtenteLocale = null;
+            if(iscrizioniAperte) {
+                document.getElementById('btn-prenota').disabled = false;
+                document.getElementById('btn-prenota').innerText = "Prenotati Ora";
+            }
         }
 
-        giocatori.forEach((g, index) => {
-            const div = document.createElement('div');
-            div.className = 'player-card';
-            div.innerHTML = `
-                <span class="player-info">${index + 1}. ${g.nome} ${g.cognome}</span>
-                <span class="player-time">🕒 ${g.ora}</span>
-            `;
+        const countTitolari = Math.min(docs.length, MAX_TITOLARI);
+        const countRiserve = Math.max(0, Math.min(docs.length - MAX_TITOLARI, MAX_RISERVE));
 
-            if (index < MAX_TITOLARI) {
+        document.getElementById('count-titolari').innerText = `${countTitolari}/${MAX_TITOLARI}`;
+        document.getElementById('count-riserve').innerText = `${countRiserve}/${MAX_RISERVE}`;
+
+        if (iscrizioniAperte && !prenotazioneUtenteLocale) {
+            const btn = document.getElementById('btn-prenota');
+            if (docs.length >= (MAX_TITOLARI + MAX_RISERVE)) {
+                btn.disabled = true;
+                btn.innerText = "Liste Complete!";
+            }
+        }
+
+        if(docs.length === 0) listaTitolari.innerHTML = '<div style="padding:15px;text-align:center;color:#999;font-style:italic;">Nessun iscritto. Sii il primo!</div>';
+
+        docs.forEach((p, i) => {
+            const isMe = (p.id === prenotazioneUtenteLocale);
+            // Determina se è Titolare o Riserva in base alla posizione (Indice)
+            const isTitolare = i < MAX_TITOLARI;
+            
+            const html = `
+                <div class="player-left">
+                    <span class="player-index">${i + 1}.</span>
+                    <span class="player-name">${p.nome} ${p.cognome} ${isMe ? '(Tu)' : ''}</span>
+                </div>
+                <div class="player-right">
+                    <span class="player-time">${p.ora}</span>
+                    ${isMe ? `<button class="btn-delete" data-id="${p.id}" data-nome="${p.nome} ${p.cognome}">Cancella</button>` : ''}
+                </div>
+            `;
+            
+            const div = document.createElement('div');
+            div.className = `player-card ${isMe ? 'is-me' : ''}`;
+            div.innerHTML = html;
+
+            if (isTitolare) {
                 listaTitolari.appendChild(div);
-            } else if (index < (MAX_TITOLARI + MAX_RISERVE)) {
+            } else if (i < MAX_TITOLARI + MAX_RISERVE) {
                 listaRiserve.appendChild(div);
             }
         });
 
-        const numTitolari = Math.min(giocatori.length, MAX_TITOLARI);
-        const numRiserve = Math.max(0, Math.min(giocatori.length - MAX_TITOLARI, MAX_RISERVE));
-        document.getElementById('count-titolari').innerText = `${numTitolari}/${MAX_TITOLARI}`;
-        document.getElementById('count-riserve').innerText = `${numRiserve}/${MAX_RISERVE}`;
-    }, (error) => {
-        console.error("Errore Firebase:", error);
-        if (error.message.includes("requires an index")) {
-            document.getElementById('status-msg').innerHTML = `<span style="color:red; font-weight:bold;">⚠️ AZIONE RICHIESTA: Apri la console (F12) e clicca sul link di Firebase per creare l'indice!</span>`;
+        // Ri-attacca gli eventi ai bottoni Cancella
+        document.querySelectorAll('.btn-delete').forEach(btn => {
+            btn.addEventListener('click', (e) => cancellaPrenotazione(e.target.dataset.id, e.target.dataset.nome));
+        });
+    });
+
+    // --- CARICAMENTO CLASSIFICA PRESENZE ---
+    const qStats = query(collection(db, collStats), orderBy("presenze", "desc"));
+    onSnapshot(qStats, (snapshot) => {
+        const container = document.getElementById('lista-stats');
+        container.innerHTML = '';
+        
+        // Prendo solo i primi 10 per non allungare troppo la pagina
+        let count = 0;
+        snapshot.forEach(doc => {
+            if(count >= 10) return;
+            const d = doc.data();
+            const row = document.createElement('div');
+            row.className = 'stat-row';
+            row.innerHTML = `
+                <span>${count+1}. <b>${d.nome_completo}</b></span>
+                <span class="badge-presenze">${d.presenze}</span>
+            `;
+            container.appendChild(row);
+            count++;
+        });
+    });
+
+    // --- AZIONI: PRENOTA & CANCELLA ---
+
+    document.getElementById('btn-prenota').addEventListener('click', async () => {
+        if (!iscrizioniAperte) return;
+        if (prenotazioneUtenteLocale) { alert("Sei già iscritto!"); return; }
+
+        const nome = document.getElementById('nome').value.trim();
+        const cognome = document.getElementById('cognome').value.trim();
+        if (!nome || !cognome) { alert("Compila tutti i campi"); return; }
+
+        const btn = document.getElementById('btn-prenota');
+        btn.disabled = true;
+        btn.innerText = "Attendere...";
+
+        // Formatta Nome Cognome (iniziali maiuscole)
+        const formatName = (str) => str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+        const nomeF = formatName(nome);
+        const cognomeF = formatName(cognome);
+        const nomeCompleto = `${nomeF} ${cognomeF}`;
+        
+        // ID univoco per le statistiche (minuscolo senza spazi)
+        const statsId = `${nomeF.toLowerCase()}_${cognomeF.toLowerCase()}`.replace(/\s+/g, '');
+        
+        try {
+            // 1. Aggiungi Prenotazione
+            const docRef = await addDoc(collection(db, collPrenotazioni), {
+                nome: nomeF,
+                cognome: cognomeF,
+                data_partita: dataPartitaTarget,
+                ora: new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}),
+                timestamp: Date.now()
+            });
+
+            // 2. Salva Cache
+            localStorage.setItem('mio_id_prenotazione', docRef.id);
+            prenotazioneUtenteLocale = docRef.id;
+
+            // 3. Aggiorna Stats (+1)
+            const statsRef = doc(db, collStats, statsId);
+            const statsSnap = await getDoc(statsRef);
+            if (statsSnap.exists()) {
+                await updateDoc(statsRef, { presenze: increment(1), nome_completo: nomeCompleto });
+            } else {
+                await setDoc(statsRef, { nome_completo: nomeCompleto, presenze: 1 });
+            }
+
+            // Reset Form
+            document.getElementById('nome').value = '';
+            document.getElementById('cognome').value = '';
+            
+        } catch (e) {
+            console.error(e);
+            alert("Errore di connessione. Riprova.");
+            btn.disabled = false;
+            btn.innerText = "Prenotati Ora";
         }
     });
 
-    // Funzione Prenotazione
-    document.getElementById('btn-prenota').addEventListener('click', async () => {
-        const nomeIn = document.getElementById('nome');
-        const cognomeIn = document.getElementById('cognome');
-        const nome = nomeIn.value.trim();
-        const cognome = cognomeIn.value.trim();
+    async function cancellaPrenotazione(idDoc, nomeCompletoOriginale) {
+        if(!confirm("Sicuro di voler lasciare il posto?")) return;
 
-        if (!nome || !cognome) { alert("Inserisci nome e cognome!"); return; }
-        
-        if (totaleGiocatori >= (MAX_TITOLARI + MAX_RISERVE)) { alert("Liste piene!"); return; }
-
-        document.getElementById('status-msg').innerText = "Salvataggio...";
-        
-        const adesso = new Date();
-        const orario = adesso.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+        // Ricostruiamo l'ID stats dal nome salvato nel bottone
+        const parts = nomeCompletoOriginale.split(" ");
+        // Gestione cognomi doppi semplice (o nomi doppi)
+        const statsId = nomeCompletoOriginale.toLowerCase().replace(/\s+/g, '');
 
         try {
-            await addDoc(collection(db, collectionName), {
-                nome: nome,
-                cognome: cognome,
-                ora: orario,
-                timestamp: Date.now(),
-                data_partita: dataCorrenteMatch
-            });
-            nomeIn.value = '';
-            cognomeIn.value = '';
+            // 1. Cancella Doc
+            await deleteDoc(doc(db, collPrenotazioni, idDoc));
+
+            // 2. Pulisci Cache Locale
+            localStorage.removeItem('mio_id_prenotazione');
+            prenotazioneUtenteLocale = null;
+            
+            // Riabilita bottone prenota
+            if(iscrizioniAperte) {
+                const btn = document.getElementById('btn-prenota');
+                btn.disabled = false;
+                btn.innerText = "Prenotati Ora";
+            }
+
+            // 3. Togli Presenza (-1)
+            // Nota: Se uno si cancella, non ha giocato, quindi togliamo la presenza
+            const statsRef = doc(db, collStats, statsId);
+            await updateDoc(statsRef, { presenze: increment(-1) });
+
         } catch (e) {
-            console.error("Errore: ", e);
-            alert("Errore nel salvataggio.");
+            console.error(e);
+            alert("Errore nella cancellazione. Riprova.");
         }
-    });
+    }
+
 </script>
 
 </body>
