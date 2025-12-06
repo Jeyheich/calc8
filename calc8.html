@@ -7,13 +7,15 @@
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h1 { text-align: center; color: #1565c0; margin-bottom: 5px; }
         
-        /* Conto alla rovescia / Info Data */
+        /* Titolo cliccabile per admin */
+        h1 { text-align: center; color: #1565c0; margin-bottom: 5px; cursor: pointer; user-select: none; }
+        h1:active { transform: scale(0.98); }
+
         .info-box { background: #e3f2fd; color: #0d47a1; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-size: 1rem; border: 1px solid #bbdefb; font-weight: 500;}
         .status-closed { background: #ffebee; color: #c62828; border-color: #ffcdd2; }
+        .admin-active { border: 2px solid red; background: #fff0f0; } /* Stile quando sei admin */
         
-        /* Form */
         .form-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; }
         input:focus { border-color: #1565c0; }
@@ -21,14 +23,13 @@
         button#btn-prenota:hover { background-color: #0d47a1; }
         button:disabled { background-color: #9e9e9e !important; cursor: not-allowed; opacity: 0.7; }
 
-        /* Liste */
         h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 30px; font-size: 1.1rem; color: #333; display: flex; justify-content: space-between; align-items: center;}
         .badge-count { background: #eee; padding: 2px 8px; border-radius: 12px; font-size: 0.9rem; }
         
         .list-container { margin-bottom: 20px; }
         .player-card { display: flex; justify-content: space-between; padding: 12px; background: #fff; border-bottom: 1px solid #f0f0f0; align-items: center; transition: background 0.3s; }
         .player-card:last-child { border-bottom: none; }
-        .player-card.is-me { background-color: #e8f5e9; border-left: 4px solid #4caf50; } /* Evidenzia me stesso */
+        .player-card.is-me { background-color: #e8f5e9; border-left: 4px solid #4caf50; } 
         
         .player-left { display: flex; align-items: center; gap: 10px; }
         .player-index { color: #888; font-size: 0.9rem; min-width: 25px; font-weight: bold;}
@@ -37,23 +38,23 @@
         .player-right { display: flex; align-items: center; gap: 10px; }
         .player-time { font-size: 0.75rem; color: #666; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; }
         
-        /* Delete Button */
-        .btn-delete { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 4px; cursor: pointer; font-size: 0.9rem; padding: 5px 10px; transition: all 0.2s; }
-        .btn-delete:hover { background: #c62828; color: white; }
-
-        /* Riserve e Stats */
         .reserves .player-time { background: #fff3e0; color: #e65100; }
         .reserves .player-index { color: #e65100; }
         
         .stats-container { margin-top: 40px; background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #eee; }
         .stat-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 0.9rem; border-bottom: 1px dashed #eee; }
         .badge-presenze { background: #2e7d32; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: bold;}
+
+        /* Bottone delete admin - rosso scuro */
+        .btn-delete.admin-del { background: #b71c1c; color: white; border-color: #b71c1c; }
+        .btn-delete { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 4px; cursor: pointer; font-size: 0.9rem; padding: 5px 10px; transition: all 0.2s; }
+        .btn-delete:hover { background: #c62828; color: white; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>⚽ Partita del Lunedì</h1>
+<div class="container" id="main-container">
+    <h1 id="app-title" title="Clicca 3 volte per Admin">⚽ Partita del Lunedì</h1>
     
     <div id="info-box" class="info-box">Connessione al calendario...</div>
     
@@ -81,9 +82,9 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, setDoc, getDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, setDoc, getDoc, updateDoc, increment, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // --- CONFIGURAZIONE (Già inserita la tua) ---
+    // --- CONFIGURAZIONE ---
     const firebaseConfig = {
       apiKey: "AIzaSyADBVqklh5V0e6HoHdhaMepc0lMlD_dS2w",
       authDomain: "calc8-c2b22.firebaseapp.com",
@@ -103,26 +104,49 @@
     const MAX_RISERVE = 16;
     let dataPartitaTarget = ""; 
     let iscrizioniAperte = false;
-    // Cache locale dell'ID prenotazione per riconoscere l'utente
     let prenotazioneUtenteLocale = localStorage.getItem('mio_id_prenotazione'); 
+    
+    // --- GESTIONE ADMIN ---
+    let isAdmin = false;
+    let adminClicks = 0;
+    const ADMIN_PASSWORD = "admin"; // <--- CAMBIA QUESTA PASSWORD SE VUOI
 
-    // --- LOGICA TEMPORALE (Giovedì h12 -> Lunedì h23) ---
+    // Logica Clic Segreto sul Titolo
+    document.getElementById('app-title').addEventListener('click', () => {
+        adminClicks++;
+        if (adminClicks === 3) {
+            const pwd = prompt("🔒 Accesso Admin: Inserisci Password");
+            if (pwd === ADMIN_PASSWORD) {
+                isAdmin = true;
+                document.getElementById('main-container').classList.add('admin-active'); // Feedback visivo
+                alert("Modalità Admin ATTIVA: Ora puoi cancellare chiunque.");
+                // Forziamo il ricaricamento della lista per mostrare i bottoni
+                // (Trucco: la funzione onSnapshot si aggiornerà al prossimo evento, 
+                // ma per vederlo subito ricarichiamo la pagina o aspettiamo un secondo.
+                // Meglio: Ricarichiamo la pagina in modo "silenzioso" o aspettiamo l'update)
+                renderCurrentList(); // Richiamiamo render se avessimo i dati, ma qui aspettiamo l'update
+            } else {
+                alert("Password Errata!");
+            }
+            adminClicks = 0;
+        }
+    });
+
+    // --- LOGICA TEMPORALE ---
     function calcolaLogicaDate() {
         const adesso = new Date();
-        const giornoSettimana = adesso.getDay(); // 0=Dom, 1=Lun, 4=Giov
+        const giornoSettimana = adesso.getDay(); 
         
-        // Calcolo quanti giorni mancano al prossimo Lunedì
         let giorniAlLunedi = (1 + 7 - giornoSettimana) % 7;
-        if (giornoSettimana === 1) giorniAlLunedi = 0; // Oggi è lunedì
+        if (giornoSettimana === 1) giorniAlLunedi = 0; 
 
         const dataLunedi = new Date(adesso);
         dataLunedi.setDate(adesso.getDate() + giorniAlLunedi);
         dataPartitaTarget = dataLunedi.toISOString().split('T')[0];
 
-        // Finestra Temporale: Dal Giovedì precedente (h12) al Lunedì (h23)
         const dataApertura = new Date(dataLunedi);
-        dataApertura.setDate(dataLunedi.getDate() - 4); // Giovedì
-        dataApertura.setHours(12, 0, 0, 0);
+        dataApertura.setDate(dataLunedi.getDate() - 4); 
+        dataApertura.setHours(12, 0, 0, 0); // GIOVEDI ORE 12
 
         const dataChiusura = new Date(dataLunedi);
         dataChiusura.setHours(23, 59, 59, 0);
@@ -130,12 +154,12 @@
         const infoBox = document.getElementById('info-box');
         const btn = document.getElementById('btn-prenota');
 
+        // Se sono ADMIN salto i controlli di orario
         if (adesso >= dataApertura && adesso <= dataChiusura) {
             iscrizioniAperte = true;
             infoBox.className = "info-box";
             infoBox.innerHTML = `🟢 Iscrizioni <b>APERTE</b> per Lunedì <b>${formattaData(dataPartitaTarget)}</b>`;
             
-            // Gestione testo bottone in base allo stato
             if (!prenotazioneUtenteLocale) {
                 btn.disabled = false;
                 btn.innerText = "Prenotati Ora";
@@ -143,7 +167,6 @@
                 btn.disabled = true;
                 btn.innerText = "Sei già iscritto";
             }
-
         } else {
             iscrizioniAperte = false;
             infoBox.className = "info-box status-closed";
@@ -159,12 +182,13 @@
         return `${d}/${m}`;
     }
 
-    // Aggiornamento orario
     calcolaLogicaDate();
     setInterval(calcolaLogicaDate, 60000);
 
-    // --- CARICAMENTO REAL-TIME LISTA ---
-    // Ascolta solo le prenotazioni per la data del match
+    // Variabile per salvare l'ultimo snapshot (per ri-renderizzare se divento admin)
+    let lastSnapshotDocs = [];
+
+    // --- CARICAMENTO LISTA ---
     const q = query(
         collection(db, collPrenotazioni), 
         where("data_partita", "==", dataPartitaTarget),
@@ -172,17 +196,25 @@
     );
 
     onSnapshot(q, (snapshot) => {
+        lastSnapshotDocs = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+        renderCurrentList();
+    });
+
+    function renderCurrentList() {
+        const docs = lastSnapshotDocs;
         const listaTitolari = document.getElementById('lista-titolari');
         const listaRiserve = document.getElementById('lista-riserve');
         listaTitolari.innerHTML = '';
         listaRiserve.innerHTML = '';
-        
-        const docs = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
-        
-        // Verifica se l'ID salvato in cache esiste ancora nel DB (o se è stato cancellato)
+
+        // Se sono admin, il pulsante prenota è sempre abilitato (utile per inserire gente a mano)
+        if(isAdmin) {
+             document.getElementById('btn-prenota').disabled = false;
+             document.getElementById('btn-prenota').innerText = "Prenota (Admin Mode)";
+        }
+
         const myPrenotazione = docs.find(d => d.id === prenotazioneUtenteLocale);
-        if (!myPrenotazione) {
-            // Se avevo un ID locale ma non c'è nel DB, resetto
+        if (!myPrenotazione && !isAdmin) {
             localStorage.removeItem('mio_id_prenotazione');
             prenotazioneUtenteLocale = null;
             if(iscrizioniAperte) {
@@ -197,7 +229,8 @@
         document.getElementById('count-titolari').innerText = `${countTitolari}/${MAX_TITOLARI}`;
         document.getElementById('count-riserve').innerText = `${countRiserve}/${MAX_RISERVE}`;
 
-        if (iscrizioniAperte && !prenotazioneUtenteLocale) {
+        // Blocco bottone liste piene (se non sono admin)
+        if (iscrizioniAperte && !prenotazioneUtenteLocale && !isAdmin) {
             const btn = document.getElementById('btn-prenota');
             if (docs.length >= (MAX_TITOLARI + MAX_RISERVE)) {
                 btn.disabled = true;
@@ -205,12 +238,12 @@
             }
         }
 
-        if(docs.length === 0) listaTitolari.innerHTML = '<div style="padding:15px;text-align:center;color:#999;font-style:italic;">Nessun iscritto. Sii il primo!</div>';
+        if(docs.length === 0) listaTitolari.innerHTML = '<div style="padding:15px;text-align:center;color:#999;font-style:italic;">Nessun iscritto.</div>';
 
         docs.forEach((p, i) => {
             const isMe = (p.id === prenotazioneUtenteLocale);
-            // Determina se è Titolare o Riserva in base alla posizione (Indice)
-            const isTitolare = i < MAX_TITOLARI;
+            // IL CESTINO APPARE SE: È l'utente (isMe) OPPURE se Admin è attivo (isAdmin)
+            const showDelete = isMe || isAdmin;
             
             const html = `
                 <div class="player-left">
@@ -219,7 +252,7 @@
                 </div>
                 <div class="player-right">
                     <span class="player-time">${p.ora}</span>
-                    ${isMe ? `<button class="btn-delete" data-id="${p.id}" data-nome="${p.nome} ${p.cognome}">Cancella</button>` : ''}
+                    ${showDelete ? `<button class="btn-delete ${isAdmin ? 'admin-del' : ''}" data-id="${p.id}" data-nome="${p.nome} ${p.cognome}">🗑️</button>` : ''}
                 </div>
             `;
             
@@ -227,26 +260,20 @@
             div.className = `player-card ${isMe ? 'is-me' : ''}`;
             div.innerHTML = html;
 
-            if (isTitolare) {
-                listaTitolari.appendChild(div);
-            } else if (i < MAX_TITOLARI + MAX_RISERVE) {
-                listaRiserve.appendChild(div);
-            }
+            if (i < MAX_TITOLARI) listaTitolari.appendChild(div);
+            else if (i < MAX_TITOLARI + MAX_RISERVE) listaRiserve.appendChild(div);
         });
 
-        // Ri-attacca gli eventi ai bottoni Cancella
         document.querySelectorAll('.btn-delete').forEach(btn => {
             btn.addEventListener('click', (e) => cancellaPrenotazione(e.target.dataset.id, e.target.dataset.nome));
         });
-    });
+    }
 
     // --- CARICAMENTO CLASSIFICA PRESENZE ---
     const qStats = query(collection(db, collStats), orderBy("presenze", "desc"));
     onSnapshot(qStats, (snapshot) => {
         const container = document.getElementById('lista-stats');
         container.innerHTML = '';
-        
-        // Prendo solo i primi 10 per non allungare troppo la pagina
         let count = 0;
         snapshot.forEach(doc => {
             if(count >= 10) return;
@@ -262,11 +289,11 @@
         });
     });
 
-    // --- AZIONI: PRENOTA & CANCELLA ---
-
+    // --- AZIONI ---
     document.getElementById('btn-prenota').addEventListener('click', async () => {
-        if (!iscrizioniAperte) return;
-        if (prenotazioneUtenteLocale) { alert("Sei già iscritto!"); return; }
+        // Se Admin, ignora i blocchi
+        if (!iscrizioniAperte && !isAdmin) return;
+        if (prenotazioneUtenteLocale && !isAdmin) { alert("Risulti già iscritto sul dispositivo!"); return; }
 
         const nome = document.getElementById('nome').value.trim();
         const cognome = document.getElementById('cognome').value.trim();
@@ -274,19 +301,29 @@
 
         const btn = document.getElementById('btn-prenota');
         btn.disabled = true;
-        btn.innerText = "Attendere...";
+        btn.innerText = "Verifica...";
 
-        // Formatta Nome Cognome (iniziali maiuscole)
         const formatName = (str) => str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
         const nomeF = formatName(nome);
         const cognomeF = formatName(cognome);
         const nomeCompleto = `${nomeF} ${cognomeF}`;
-        
-        // ID univoco per le statistiche (minuscolo senza spazi)
         const statsId = `${nomeF.toLowerCase()}_${cognomeF.toLowerCase()}`.replace(/\s+/g, '');
         
         try {
-            // 1. Aggiungi Prenotazione
+            // Check Doppioni (solo se non sono admin, l'admin può fare quel che vuole)
+            if (!isAdmin) {
+                const qCheck = query(collection(db, collPrenotazioni), where("data_partita", "==", dataPartitaTarget), where("nome", "==", nomeF), where("cognome", "==", cognomeF));
+                const snapshotCheck = await getDocs(qCheck);
+                if (!snapshotCheck.empty) {
+                    alert(`Attenzione: ${nomeCompleto} è già in lista!`);
+                    btn.disabled = false;
+                    btn.innerText = "Prenotati Ora";
+                    return; 
+                }
+            }
+
+            btn.innerText = "Salvataggio...";
+
             const docRef = await addDoc(collection(db, collPrenotazioni), {
                 nome: nomeF,
                 cognome: cognomeF,
@@ -295,11 +332,12 @@
                 timestamp: Date.now()
             });
 
-            // 2. Salva Cache
-            localStorage.setItem('mio_id_prenotazione', docRef.id);
-            prenotazioneUtenteLocale = docRef.id;
+            // Se non sono admin, salvo la mia identità. Se sono admin, sto inserendo un altro, quindi non salvo l'ID come "mio"
+            if (!isAdmin) {
+                localStorage.setItem('mio_id_prenotazione', docRef.id);
+                prenotazioneUtenteLocale = docRef.id;
+            }
 
-            // 3. Aggiorna Stats (+1)
             const statsRef = doc(db, collStats, statsId);
             const statsSnap = await getDoc(statsRef);
             if (statsSnap.exists()) {
@@ -308,50 +346,50 @@
                 await setDoc(statsRef, { nome_completo: nomeCompleto, presenze: 1 });
             }
 
-            // Reset Form
             document.getElementById('nome').value = '';
             document.getElementById('cognome').value = '';
             
+            // Se Admin, riabilito subito il bottone per inserirne un altro
+            if(isAdmin) {
+                btn.disabled = false; 
+                btn.innerText = "Prenota (Admin Mode)";
+            }
+
         } catch (e) {
             console.error(e);
-            alert("Errore di connessione. Riprova.");
+            alert("Errore. Riprova.");
             btn.disabled = false;
             btn.innerText = "Prenotati Ora";
         }
     });
 
     async function cancellaPrenotazione(idDoc, nomeCompletoOriginale) {
-        if(!confirm("Sicuro di voler lasciare il posto?")) return;
+        // Messaggio diverso se sei admin
+        let msg = "Sicuro di voler lasciare il posto?";
+        if (isAdmin) msg = `ADMIN: Vuoi cancellare definitivamente ${nomeCompletoOriginale}?`;
+
+        if(!confirm(msg)) return;
 
         try {
-            // 1. Ricostruzione corretta dell'ID Statistiche (es. da "Mario Rossi" a "mario_rossi")
-            // Deve essere identico a come viene creato quando si prenota!
             const statsId = nomeCompletoOriginale.toLowerCase().split(' ').join('_');
 
-            // 2. Cancella la prenotazione
             await deleteDoc(doc(db, collPrenotazioni, idDoc));
 
-            // 3. Pulisci Cache Locale
-            localStorage.removeItem('mio_id_prenotazione');
-            prenotazioneUtenteLocale = null;
-            
-            // Riabilita bottone prenota subito visivamente
-            if(iscrizioniAperte) {
-                const btn = document.getElementById('btn-prenota');
-                btn.disabled = false;
-                btn.innerText = "Prenotati Ora";
+            // Se cancello "me stesso", resetto la cache. Se Admin cancella un altro, la cache non si tocca
+            if (idDoc === prenotazioneUtenteLocale) {
+                localStorage.removeItem('mio_id_prenotazione');
+                prenotazioneUtenteLocale = null;
             }
-
-            // 4. Togli Presenza (-1) dalla classifica
+            
+            // Stats -1
             const statsRef = doc(db, collStats, statsId);
             await updateDoc(statsRef, { presenze: increment(-1) });
 
         } catch (e) {
-            console.error("Errore cancellazione:", e);
-            alert("Errore nella cancellazione. Riprova.");
+            console.error(e);
+            alert("Errore cancellazione.");
         }
     }
-
 </script>
 
 </body>
