@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prenotazione Calcetto Online</title>
+    <title>Prenotazione Calcetto</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h1 { text-align: center; color: #1565c0; } /* Blu per il tema online */
+        h1 { text-align: center; color: #1565c0; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 20px; font-size: 0.9rem; }
         
         .form-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
@@ -25,17 +26,16 @@
         
         .reserves .player-time { background: #fff3e0; color: #e65100; }
         
-        .reset-btn { background-color: #d32f2f; margin-top: 20px; width: 100%; }
-        .reset-btn:hover { background-color: #b71c1c; }
-        
         #status-msg { text-align: center; font-size: 0.9rem; color: #666; margin-bottom: 10px; min-height: 20px;}
+        .date-badge { display: block; text-align: center; background: #e8f5e9; color: #2e7d32; padding: 5px; border-radius: 4px; margin-bottom: 15px; font-weight: bold;}
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>⚽ Calcetto Live</h1>
-    <div id="status-msg">Caricamento lista...</div>
+    <div id="display-data-partita" class="date-badge">Caricamento data...</div>
+    <div id="status-msg">Connessione in corso...</div>
     
     <div class="form-group">
         <input type="text" id="nome" placeholder="Nome" required>
@@ -52,39 +52,61 @@
         <h2>Riserve <span class="counter" id="count-riserve">0/16</span></h2>
         <div id="lista-riserve"></div>
     </div>
-
-    <button class="reset-btn" id="btn-reset">Reset Nuova Partita</button>
 </div>
 
 <script type="module">
-    // Importa le funzioni necessarie da Firebase
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // --- CONFIGURAZIONE FIREBASE ---
-    // 1. Sostituisci tutto l'oggetto qui sotto con quello che ti ha dato Firebase
+    // --- LA TUA CONFIGURAZIONE FIREBASE ---
     const firebaseConfig = {
-  apiKey: "AIzaSyADBVqklh5V0e6HoHdhaMepc0lMlD_dS2w",
-  authDomain: "calc8-c2b22.firebaseapp.com",
-  projectId: "calc8-c2b22",
-  storageBucket: "calc8-c2b22.firebasestorage.app",
-  messagingSenderId: "694548999338",
-  appId: "1:694548999338:web:0635e7ca4f3edf63b874d3"
-};
-    // -------------------------------
+        apiKey: "AIzaSyADBVqklh5V0e6HoHdhaMepc0lMlD_dS2w",
+        authDomain: "calc8-c2b22.firebaseapp.com",
+        projectId: "calc8-c2b22",
+        storageBucket: "calc8-c2b22.firebasestorage.app",
+        messagingSenderId: "694548999338",
+        appId: "1:694548999338:web:0635e7ca4f3edf63b874d3"
+    };
+    // --------------------------------------
 
-    // Inizializza Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const collectionName = "prenotazioni_calcetto"; // Nome della tabella nel DB
+    const collectionName = "prenotazioni_calcetto";
+
+    // --- LOGICA DATE (Reset settimanale automatico) ---
+    function getDataPartita() {
+        const oggi = new Date();
+        const giornoSettimana = oggi.getDay(); // 0=Dom, 1=Lun, ... 4=Giov ... 6=Sab
+        
+        // Calcolo giorni mancanti al prossimo Giovedì (4)
+        // Se oggi è Ven(5) o Sab(6), punta al prossimo. Se oggi è Dom(0)-Merc(3), punta a questo.
+        let giorniMancanti = (4 - giornoSettimana + 7) % 7;
+        
+        const dataTarget = new Date(oggi);
+        dataTarget.setDate(oggi.getDate() + giorniMancanti);
+        
+        return dataTarget.toISOString().split('T')[0];
+    }
+    
+    function formattaData(dataString) {
+        const [y, m, d] = dataString.split('-');
+        return `${d}/${m}/${y}`;
+    }
+
+    const dataCorrenteMatch = getDataPartita();
+    document.getElementById('display-data-partita').innerText = `Iscrizioni per Giovedì ${formattaData(dataCorrenteMatch)}`;
 
     const MAX_TITOLARI = 16;
     const MAX_RISERVE = 16;
     let totaleGiocatori = 0;
 
-    // ASCOLTO IN TEMPO REALE (La magia avviene qui)
-    // Questa funzione scatta ogni volta che il database cambia (qualcuno si iscrive)
-    const q = query(collection(db, collectionName), orderBy("timestamp"));
+    // --- QUERY CON FILTRO DATA ---
+    const q = query(
+        collection(db, collectionName), 
+        where("data_partita", "==", dataCorrenteMatch),
+        orderBy("timestamp")
+    );
+
     onSnapshot(q, (snapshot) => {
         const listaTitolari = document.getElementById('lista-titolari');
         const listaRiserve = document.getElementById('lista-riserve');
@@ -97,7 +119,11 @@
         });
 
         totaleGiocatori = giocatori.length;
-        document.getElementById('status-msg').innerText = "Lista aggiornata in tempo reale 🟢";
+        document.getElementById('status-msg').innerText = ""; 
+
+        if (giocatori.length === 0) {
+            document.getElementById('lista-titolari').innerHTML = '<div style="padding:10px; color:#999; text-align:center">Ancora nessun iscritto per questa data.</div>';
+        }
 
         giocatori.forEach((g, index) => {
             const div = document.createElement('div');
@@ -114,14 +140,18 @@
             }
         });
 
-        // Aggiorna contatori
         const numTitolari = Math.min(giocatori.length, MAX_TITOLARI);
         const numRiserve = Math.max(0, Math.min(giocatori.length - MAX_TITOLARI, MAX_RISERVE));
         document.getElementById('count-titolari').innerText = `${numTitolari}/${MAX_TITOLARI}`;
         document.getElementById('count-riserve').innerText = `${numRiserve}/${MAX_RISERVE}`;
+    }, (error) => {
+        console.error("Errore Firebase:", error);
+        if (error.message.includes("requires an index")) {
+            document.getElementById('status-msg').innerHTML = `<span style="color:red; font-weight:bold;">⚠️ AZIONE RICHIESTA: Apri la console (F12) e clicca sul link di Firebase per creare l'indice!</span>`;
+        }
     });
 
-    // Funzione per aggiungere giocatore
+    // Funzione Prenotazione
     document.getElementById('btn-prenota').addEventListener('click', async () => {
         const nomeIn = document.getElementById('nome');
         const cognomeIn = document.getElementById('cognome');
@@ -129,9 +159,10 @@
         const cognome = cognomeIn.value.trim();
 
         if (!nome || !cognome) { alert("Inserisci nome e cognome!"); return; }
+        
         if (totaleGiocatori >= (MAX_TITOLARI + MAX_RISERVE)) { alert("Liste piene!"); return; }
 
-        document.getElementById('status-msg').innerText = "Salvataggio in corso...";
+        document.getElementById('status-msg').innerText = "Salvataggio...";
         
         const adesso = new Date();
         const orario = adesso.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
@@ -141,26 +172,14 @@
                 nome: nome,
                 cognome: cognome,
                 ora: orario,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                data_partita: dataCorrenteMatch
             });
-            // Pulisci campi
             nomeIn.value = '';
             cognomeIn.value = '';
         } catch (e) {
             console.error("Errore: ", e);
-            alert("Errore nel salvataggio. Controlla la console.");
-        }
-    });
-
-    // Funzione Reset (Cancella tutto dal database)
-    document.getElementById('btn-reset').addEventListener('click', async () => {
-        if(confirm("ATTENZIONE: Questo cancellerà la lista per TUTTI i partecipanti. Procedere?")) {
-            document.getElementById('status-msg').innerText = "Cancellazione in corso...";
-            const snapshot = await getDocs(collection(db, collectionName));
-            // Cancella uno a uno (Firebase non ha un "cancella tutto" semplice da client web per sicurezza)
-            const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-            await Promise.all(deletePromises);
-            document.getElementById('status-msg').innerText = "Lista resettata!";
+            alert("Errore nel salvataggio.");
         }
     });
 </script>
