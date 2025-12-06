@@ -323,33 +323,31 @@
     async function cancellaPrenotazione(idDoc, nomeCompletoOriginale) {
         if(!confirm("Sicuro di voler lasciare il posto?")) return;
 
-        // Ricostruiamo l'ID stats dal nome salvato nel bottone
-        const parts = nomeCompletoOriginale.split(" ");
-        // Gestione cognomi doppi semplice (o nomi doppi)
-        const statsId = nomeCompletoOriginale.toLowerCase().replace(/\s+/g, '');
-
         try {
-            // 1. Cancella Doc
+            // 1. Ricostruzione corretta dell'ID Statistiche (es. da "Mario Rossi" a "mario_rossi")
+            // Deve essere identico a come viene creato quando si prenota!
+            const statsId = nomeCompletoOriginale.toLowerCase().split(' ').join('_');
+
+            // 2. Cancella la prenotazione
             await deleteDoc(doc(db, collPrenotazioni, idDoc));
 
-            // 2. Pulisci Cache Locale
+            // 3. Pulisci Cache Locale
             localStorage.removeItem('mio_id_prenotazione');
             prenotazioneUtenteLocale = null;
             
-            // Riabilita bottone prenota
+            // Riabilita bottone prenota subito visivamente
             if(iscrizioniAperte) {
                 const btn = document.getElementById('btn-prenota');
                 btn.disabled = false;
                 btn.innerText = "Prenotati Ora";
             }
 
-            // 3. Togli Presenza (-1)
-            // Nota: Se uno si cancella, non ha giocato, quindi togliamo la presenza
+            // 4. Togli Presenza (-1) dalla classifica
             const statsRef = doc(db, collStats, statsId);
             await updateDoc(statsRef, { presenze: increment(-1) });
 
         } catch (e) {
-            console.error(e);
+            console.error("Errore cancellazione:", e);
             alert("Errore nella cancellazione. Riprova.");
         }
     }
