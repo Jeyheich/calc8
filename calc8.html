@@ -8,7 +8,6 @@
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
-        /* Titolo cliccabile per admin */
         h1 { text-align: center; color: #1565c0; margin-bottom: 5px; cursor: pointer; user-select: none; }
         h1:active { transform: scale(0.98); }
         
@@ -17,12 +16,19 @@
         
         /* Stili Admin */
         .admin-active { border: 2px solid #d32f2f; background: #fffbfb; }
-        .admin-panel { display: none; background: #ffebee; padding: 10px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ffcdd2; text-align: center; }
-        .btn-email { background-color: #f57c00; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 5px; width: 100%; font-size: 0.9rem;}
-        .btn-email:hover { background-color: #e65100; }
+        .admin-panel { display: none; background: #ffebee; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ffcdd2; text-align: center; }
+        
+        .admin-controls { display: flex; gap: 5px; justify-content: center; margin-top: 10px; margin-bottom: 10px; flex-wrap: wrap;}
+        .btn-admin { padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; border: none; font-size: 0.85rem; color: white;}
+        .btn-email { background-color: #f57c00; width: 100%; margin-top: 5px;}
+        .btn-date { background-color: #1976d2; }
+        .btn-reset { background-color: #555; }
+        
+        input[type="date"] { padding: 8px; border-radius: 6px; border: 1px solid #ccc; }
 
+        /* Form e Liste */
         .form-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; }
+        input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; }
         input:focus { border-color: #1565c0; }
         button#btn-prenota { background-color: #1565c0; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; flex: 0 0 100%; transition: background 0.2s; }
         button#btn-prenota:hover { background-color: #0d47a1; }
@@ -50,7 +56,6 @@
         .stat-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 0.9rem; border-bottom: 1px dashed #eee; }
         .badge-presenze { background: #2e7d32; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: bold;}
 
-        /* Bottone delete admin - rosso scuro */
         .btn-delete.admin-del { background: #b71c1c; color: white; border-color: #b71c1c; }
         .btn-delete { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 4px; cursor: pointer; font-size: 0.9rem; padding: 5px 10px; transition: all 0.2s; }
         .btn-delete:hover { background: #c62828; color: white; }
@@ -59,12 +64,23 @@
 <body>
 
 <div class="container" id="main-container">
-    <h1 id="app-title" title="Clicca 3 volte per Admin">⚽ Partita del Lunedì</h1>
+    <h1 id="app-title" title="Clicca 3 volte per Admin">⚽ Partita Calcetto</h1>
     
     <div id="admin-panel" class="admin-panel">
-        <strong>🔧 Strumenti Admin Attivi</strong><br>
-        <span style="font-size:0.8rem">Limiti rimossi. Puoi cancellare chiunque.</span>
-        <button class="btn-email" id="btn-invia-email">📧 Crea Email Convocazioni</button>
+        <strong>🔧 Pannello Admin</strong><br>
+        <span style="font-size:0.8rem; display:block; margin-bottom:10px;">Gestisci data e giocatori</span>
+        
+        <div style="background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 10px;">
+            <label style="font-size:0.85rem; color:#666;">Cambia Giorno Partita (Override):</label>
+            <div class="admin-controls">
+                <input type="date" id="data-manuale-input">
+                <button class="btn-admin btn-date" id="btn-imposta-data">Imposta</button>
+                <button class="btn-admin btn-reset" id="btn-reset-data">Auto</button>
+            </div>
+            <div id="data-status" style="font-size:0.8rem; color: #2e7d32;">Stato: Automatico (Lun)</div>
+        </div>
+
+        <button class="btn-admin btn-email" id="btn-invia-email">📧 Crea Email Convocazioni</button>
     </div>
 
     <div id="info-box" class="info-box">Connessione al calendario...</div>
@@ -109,20 +125,26 @@
     const db = getFirestore(app);
     const collPrenotazioni = "prenotazioni_calcetto";
     const collStats = "statistiche_giocatori";
+    const docConfig = doc(db, "config", "impostazioni_partita"); // Documento per salvare la data manuale
 
     // --- VARIABILI GLOBALI ---
     const MAX_TITOLARI = 16;
     const MAX_RISERVE = 16;
+    
     let dataPartitaTarget = ""; 
+    let dataManualeOverride = null; // Se c'è, vince su quella automatica
+    
     let iscrizioniAperte = false;
     let prenotazioneUtenteLocale = localStorage.getItem('mio_id_prenotazione'); 
-    
+    let unsubscribeList = null; // Per poter riavviare l'ascolto se cambia la data
+    let lastSnapshotDocs = [];
+
     // --- GESTIONE ADMIN ---
     let isAdmin = false;
     let adminClicks = 0;
     const ADMIN_PASSWORD = "admin"; 
 
-    // Attivazione Admin con 3 click sul titolo
+    // Attivazione Admin
     document.getElementById('app-title').addEventListener('click', () => {
         adminClicks++;
         if (adminClicks === 3) {
@@ -132,9 +154,7 @@
                 document.getElementById('main-container').classList.add('admin-active'); 
                 document.getElementById('admin-panel').style.display = 'block'; 
                 alert("Modalità Admin ATTIVA");
-                // Ricalcoliamo le date e la lista per abilitare i bottoni
-                calcolaLogicaDate();
-                renderCurrentList(); 
+                updateUI(); // Rinfresca interfaccia
             } else {
                 alert("Password Errata!");
             }
@@ -142,71 +162,126 @@
         }
     });
 
-    // --- LOGICA EMAIL ---
-    document.getElementById('btn-invia-email').addEventListener('click', () => {
-        if (!lastSnapshotDocs || lastSnapshotDocs.length === 0) {
-            alert("La lista è vuota!");
-            return;
+    // --- ASCOLTO CONFIGURAZIONE (DATA MANUALE) ---
+    // Questo ascolta se l'admin cambia la data. Se cambia, tutti i telefoni si aggiornano.
+    onSnapshot(docConfig, (docSnap) => {
+        if (docSnap.exists() && docSnap.data().data_manuale) {
+            dataManualeOverride = docSnap.data().data_manuale;
+            document.getElementById('data-status').innerText = `⚠️ FORZATA: ${formattaData(dataManualeOverride)}`;
+            document.getElementById('data-status').style.color = "#d32f2f";
+        } else {
+            dataManualeOverride = null;
+            document.getElementById('data-status').innerText = "Stato: Automatico (Lunedì)";
+            document.getElementById('data-status').style.color = "#2e7d32";
         }
-
-        // Formattazione data italiana per l'email
-        const [anno, mese, giorno] = dataPartitaTarget.split('-');
-        const dataLeggibile = `${giorno}/${mese}`;
-        
-        let corpoEmail = `Ciao a tutti,%0D%0AEcco i convocati per la partita di Lunedì ${dataLeggibile}.%0D%0A%0D%0A⚽ TITOLARI:%0D%0A`;
-
-        const titolari = lastSnapshotDocs.slice(0, MAX_TITOLARI);
-        titolari.forEach((p, index) => {
-            corpoEmail += `${index + 1}. ${p.nome} ${p.cognome}%0D%0A`;
-        });
-
-        const riserve = lastSnapshotDocs.slice(MAX_TITOLARI, MAX_TITOLARI + MAX_RISERVE);
-        if (riserve.length > 0) {
-            corpoEmail += `%0D%0A⚠️ RISERVE:%0D%0A`;
-            riserve.forEach((p, index) => {
-                corpoEmail += `${index + 1}. ${p.nome} ${p.cognome}%0D%0A`;
-            });
-        }
-
-        corpoEmail += `%0D%0AA presto!`;
-        const oggetto = `Convocazioni Calcetto Lunedì ${dataLeggibile}`;
-        window.location.href = `mailto:?subject=${oggetto}&body=${corpoEmail}`;
+        // Ricalcola tutto con la nuova data (o quella automatica)
+        calcolaDataEAvvia(); 
     });
 
-    // --- LOGICA TEMPORALE (FIX FUSO ORARIO) ---
-    function calcolaLogicaDate() {
-        const adesso = new Date();
-        const giornoSettimana = adesso.getDay(); // 0=Dom, 1=Lun...
-        
-        let giorniAlLunedi = (1 + 7 - giornoSettimana) % 7;
-        // Se oggi è Lunedì, rimane oggi
-        
-        const dataLunedi = new Date(adesso);
-        dataLunedi.setDate(adesso.getDate() + giorniAlLunedi);
-        
-        // Costruzione MANUALE della stringa data (YYYY-MM-DD) usando l'ora locale
-        // Questo risolve il bug che mostrava il giorno prima (es. 07/12 invece di 08/12)
-        const y = dataLunedi.getFullYear();
-        const m = String(dataLunedi.getMonth() + 1).padStart(2, '0');
-        const d = String(dataLunedi.getDate()).padStart(2, '0');
-        dataPartitaTarget = `${y}-${m}-${d}`;
+    // Azioni Pulsanti Data Admin
+    document.getElementById('btn-imposta-data').addEventListener('click', async () => {
+        const inputVal = document.getElementById('data-manuale-input').value;
+        if(!inputVal) return alert("Scegli una data");
+        await setDoc(docConfig, { data_manuale: inputVal });
+        alert("Data aggiornata! Tutti la vedranno ora.");
+    });
 
-        const dataApertura = new Date(dataLunedi);
-        dataApertura.setDate(dataLunedi.getDate() - 4); // Giovedì precedente
+    document.getElementById('btn-reset-data').addEventListener('click', async () => {
+        await setDoc(docConfig, { data_manuale: null }); // Cancella override
+        alert("Tornato al calcolo automatico (Lunedì).");
+    });
+
+
+    // --- LOGICA PRINCIPALE (DATA + QUERY) ---
+    function calcolaDataEAvvia() {
+        // 1. Determina la data target
+        if (dataManualeOverride) {
+            // Usa quella forzata dall'Admin
+            dataPartitaTarget = dataManualeOverride;
+        } else {
+            // Usa calcolo automatico (Lunedì)
+            const adesso = new Date();
+            const giornoSettimana = adesso.getDay(); // 0=Dom, 1=Lun
+            let giorniAlLunedi = (1 + 7 - giornoSettimana) % 7;
+            const dataLunedi = new Date(adesso);
+            dataLunedi.setDate(adesso.getDate() + giorniAlLunedi);
+            
+            const y = dataLunedi.getFullYear();
+            const m = String(dataLunedi.getMonth() + 1).padStart(2, '0');
+            const d = String(dataLunedi.getDate()).padStart(2, '0');
+            dataPartitaTarget = `${y}-${m}-${d}`;
+        }
+
+        // 2. Calcola stato Apertura Iscrizioni
+        aggiornaStatoIscrizioni();
+
+        // 3. Riavvia Listener Database (perché la data potrebbe essere cambiata)
+        avviaAscoltoPrenotazioni();
+    }
+
+    function aggiornaStatoIscrizioni() {
+        const adesso = new Date();
+        const [y, m, d] = dataPartitaTarget.split('-').map(Number);
+        const dataMatch = new Date(y, m - 1, d); // Oggetto Date della partita
+        
+        // Calcolo finestra apertura (Giovedì precedente h12)
+        // Nota: Se la data è manuale, manteniamo comunque la logica "Apre il Giovedì prima di QUELLA data"
+        // oppure, se è manuale, potremmo volerla sempre aperta. 
+        // Per coerenza, manteniamo la regola: apre 4 giorni prima alle 12:00.
+        
+        const dataApertura = new Date(dataMatch);
+        dataApertura.setDate(dataMatch.getDate() - 4); 
         dataApertura.setHours(12, 0, 0, 0); 
 
-        const dataChiusura = new Date(dataLunedi);
+        const dataChiusura = new Date(dataMatch);
         dataChiusura.setHours(23, 59, 59, 999);
 
         const infoBox = document.getElementById('info-box');
-        const btn = document.getElementById('btn-prenota');
+        
+        // Se c'è Override, mostriamo anche il giorno della settimana per chiarezza
+        const giorni = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
+        const nomeGiorno = giorni[dataMatch.getDay()];
 
-        // L'Admin ignora sempre gli orari
+        // Condizione: Aperto se Admin OPPURE siamo nel range temporale
         if (isAdmin || (adesso >= dataApertura && adesso <= dataChiusura)) {
             iscrizioniAperte = true;
             infoBox.className = "info-box";
-            infoBox.innerHTML = `🟢 Iscrizioni <b>APERTE</b> per Lunedì <b>${d}/${m}</b>`;
-            
+            infoBox.innerHTML = `🟢 Iscrizioni <b>APERTE</b> per ${nomeGiorno} <b>${formattaData(dataPartitaTarget)}</b>`;
+        } else {
+            iscrizioniAperte = false;
+            infoBox.className = "info-box status-closed";
+            infoBox.innerHTML = `🔴 Iscrizioni CHIUSE per ${nomeGiorno} ${formattaData(dataPartitaTarget)}.<br>Aprono Giovedì h12.`;
+        }
+        updateUI();
+    }
+
+    function avviaAscoltoPrenotazioni() {
+        // Se c'era un ascolto attivo su una vecchia data, lo fermiamo
+        if (unsubscribeList) {
+            unsubscribeList();
+        }
+
+        const q = query(
+            collection(db, collPrenotazioni), 
+            where("data_partita", "==", dataPartitaTarget),
+            orderBy("timestamp")
+        );
+
+        unsubscribeList = onSnapshot(q, (snapshot) => {
+            lastSnapshotDocs = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+            renderCurrentList();
+        });
+    }
+
+    // Aggiorna lo stato temporale ogni minuto (per far scattare le ore 12:00)
+    setInterval(aggiornaStatoIscrizioni, 60000);
+
+
+    // --- RENDERING INTERFACCIA ---
+    function updateUI() {
+        const btn = document.getElementById('btn-prenota');
+        
+        if (iscrizioniAperte) {
             if (!prenotazioneUtenteLocale && !isAdmin) {
                 btn.disabled = false;
                 btn.innerText = "Prenotati Ora";
@@ -215,32 +290,18 @@
                 btn.innerText = "Sei già iscritto";
             }
         } else {
-            iscrizioniAperte = false;
-            infoBox.className = "info-box status-closed";
-            infoBox.innerHTML = `🔴 Iscrizioni CHIUSE.<br>Apriranno Giovedì alle 12:00.`;
-            if(!isAdmin) {
+            if (!isAdmin) {
                 btn.disabled = true;
                 btn.innerText = "Attendi Apertura";
             }
         }
+        
+        // Se Admin, sblocca sempre
+        if (isAdmin) {
+            btn.disabled = false;
+            btn.innerText = "Prenota (Admin Mode)";
+        }
     }
-
-    calcolaLogicaDate();
-    setInterval(calcolaLogicaDate, 60000); // Ricalcola ogni minuto
-
-    let lastSnapshotDocs = [];
-
-    // --- CARICAMENTO LISTA ---
-    const q = query(
-        collection(db, collPrenotazioni), 
-        where("data_partita", "==", dataPartitaTarget),
-        orderBy("timestamp")
-    );
-
-    onSnapshot(q, (snapshot) => {
-        lastSnapshotDocs = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
-        renderCurrentList();
-    });
 
     function renderCurrentList() {
         const docs = lastSnapshotDocs;
@@ -249,37 +310,26 @@
         listaTitolari.innerHTML = '';
         listaRiserve.innerHTML = '';
 
-        // Se Admin, abilita sempre il bottone
-        if(isAdmin) {
-             const btn = document.getElementById('btn-prenota');
-             btn.disabled = false;
-             btn.innerText = "Prenota (Admin Mode)";
-        }
+        updateUI(); // Aggiorna bottoni
 
         // Controllo coerenza cache
         const myPrenotazione = docs.find(d => d.id === prenotazioneUtenteLocale);
         if (!myPrenotazione && !isAdmin) {
             localStorage.removeItem('mio_id_prenotazione');
             prenotazioneUtenteLocale = null;
-            if(iscrizioniAperte) {
-                document.getElementById('btn-prenota').disabled = false;
-                document.getElementById('btn-prenota').innerText = "Prenotati Ora";
-            }
+            updateUI();
         }
 
-        // Contatori
         const countTitolari = Math.min(docs.length, MAX_TITOLARI);
         const countRiserve = Math.max(0, Math.min(docs.length - MAX_TITOLARI, MAX_RISERVE));
 
         document.getElementById('count-titolari').innerText = `${countTitolari}/${MAX_TITOLARI}`;
         document.getElementById('count-riserve').innerText = `${countRiserve}/${MAX_RISERVE}`;
 
-        // Blocco Liste Piene (solo non-admin)
         if (iscrizioniAperte && !prenotazioneUtenteLocale && !isAdmin) {
-            const btn = document.getElementById('btn-prenota');
             if (docs.length >= (MAX_TITOLARI + MAX_RISERVE)) {
-                btn.disabled = true;
-                btn.innerText = "Liste Complete!";
+                document.getElementById('btn-prenota').disabled = true;
+                document.getElementById('btn-prenota').innerText = "Liste Complete!";
             }
         }
 
@@ -313,14 +363,14 @@
         });
     }
 
-    // --- CARICAMENTO STATISTICHE ---
+    // --- CARICAMENTO STATS ---
     const qStats = query(collection(db, collStats), orderBy("presenze", "desc"));
     onSnapshot(qStats, (snapshot) => {
         const container = document.getElementById('lista-stats');
         container.innerHTML = '';
         let count = 0;
         snapshot.forEach(doc => {
-            if(count >= 10) return; // Top 10
+            if(count >= 10) return; 
             const d = doc.data();
             const row = document.createElement('div');
             row.className = 'stat-row';
@@ -333,20 +383,19 @@
         });
     });
 
-    // --- AZIONE: PRENOTA ---
+    // --- AZIONI ---
     document.getElementById('btn-prenota').addEventListener('click', async () => {
         if (!iscrizioniAperte && !isAdmin) return;
-        if (prenotazioneUtenteLocale && !isAdmin) { alert("Risulti già iscritto sul dispositivo!"); return; }
+        if (prenotazioneUtenteLocale && !isAdmin) { alert("Sei già iscritto!"); return; }
 
         const nome = document.getElementById('nome').value.trim();
         const cognome = document.getElementById('cognome').value.trim();
-        if (!nome || !cognome) { alert("Compila tutti i campi"); return; }
+        if (!nome || !cognome) { alert("Compila tutto"); return; }
 
         const btn = document.getElementById('btn-prenota');
         btn.disabled = true;
         btn.innerText = "Verifica...";
 
-        // Formattazione
         const formatName = (str) => str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
         const nomeF = formatName(nome);
         const cognomeF = formatName(cognome);
@@ -354,7 +403,6 @@
         const statsId = `${nomeF.toLowerCase()}_${cognomeF.toLowerCase()}`.replace(/\s+/g, '');
         
         try {
-            // Check Doppioni (Se NON sono admin)
             if (!isAdmin) {
                 const qCheck = query(collection(db, collPrenotazioni), where("data_partita", "==", dataPartitaTarget), where("nome", "==", nomeF), where("cognome", "==", cognomeF));
                 const snapshotCheck = await getDocs(qCheck);
@@ -367,8 +415,6 @@
             }
 
             btn.innerText = "Salvataggio...";
-
-            // 1. Salva Prenotazione
             const docRef = await addDoc(collection(db, collPrenotazioni), {
                 nome: nomeF,
                 cognome: cognomeF,
@@ -377,13 +423,11 @@
                 timestamp: Date.now()
             });
 
-            // 2. Salva Cache (solo se non Admin)
             if (!isAdmin) {
                 localStorage.setItem('mio_id_prenotazione', docRef.id);
                 prenotazioneUtenteLocale = docRef.id;
             }
 
-            // 3. Aggiorna Statistiche
             const statsRef = doc(db, collStats, statsId);
             const statsSnap = await getDoc(statsRef);
             if (statsSnap.exists()) {
@@ -402,40 +446,51 @@
 
         } catch (e) {
             console.error(e);
-            alert("Errore. Riprova.");
+            alert("Errore.");
             btn.disabled = false;
             btn.innerText = "Prenotati Ora";
         }
     });
 
-    // --- AZIONE: CANCELLA ---
     async function cancellaPrenotazione(idDoc, nomeCompletoOriginale) {
         let msg = "Sicuro di voler lasciare il posto?";
-        if (isAdmin) msg = `ADMIN: Vuoi cancellare definitivamente ${nomeCompletoOriginale}?`;
-
+        if (isAdmin) msg = `ADMIN: Cancellare ${nomeCompletoOriginale}?`;
         if(!confirm(msg)) return;
 
         try {
-            // Ricostruzione ID Stats (stesso metodo della prenotazione)
-            const statsId = nomeCompletoOriginale.toLowerCase().replace(/\s+/g, '_');
-
-            // 1. Cancella dal DB
+            const statsId = nomeCompletoOriginale.toLowerCase().split(' ').join('_');
             await deleteDoc(doc(db, collPrenotazioni, idDoc));
 
-            // 2. Rimuovi Cache (solo se sono io)
             if (idDoc === prenotazioneUtenteLocale) {
                 localStorage.removeItem('mio_id_prenotazione');
                 prenotazioneUtenteLocale = null;
             }
-            
-            // 3. Rimuovi Presenza (-1)
             const statsRef = doc(db, collStats, statsId);
             await updateDoc(statsRef, { presenze: increment(-1) });
-
-        } catch (e) {
-            console.error(e);
-            alert("Errore cancellazione.");
+        } catch (e) { console.error(e); }
+    }
+    
+    // Logica Email
+    document.getElementById('btn-invia-email').addEventListener('click', () => {
+        if (!lastSnapshotDocs.length) return alert("Lista vuota!");
+        const [y,m,d] = dataPartitaTarget.split('-');
+        const dataLeggibile = `${d}/${m}`;
+        
+        let corpo = `Ciao,%0D%0AConvocati partita ${dataLeggibile}:%0D%0A%0D%0A⚽ TITOLARI:%0D%0A`;
+        lastSnapshotDocs.slice(0, MAX_TITOLARI).forEach((p, i) => corpo += `${i+1}. ${p.nome} ${p.cognome}%0D%0A`);
+        
+        const riserve = lastSnapshotDocs.slice(MAX_TITOLARI, MAX_TITOLARI + MAX_RISERVE);
+        if(riserve.length) {
+            corpo += `%0D%0A⚠️ RISERVE:%0D%0A`;
+            riserve.forEach((p, i) => corpo += `${i+1}. ${p.nome} ${p.cognome}%0D%0A`);
         }
+        window.location.href = `mailto:?subject=Calcetto ${dataLeggibile}&body=${corpo}`;
+    });
+
+    function formattaData(str) {
+        if(!str) return "...";
+        const [y, m, d] = str.split('-');
+        return `${d}/${m}`;
     }
 </script>
 
