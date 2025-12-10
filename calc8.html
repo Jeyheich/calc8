@@ -56,6 +56,7 @@
         .stat-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 0.9rem; border-bottom: 1px dashed #eee; }
         .badge-presenze { background: #2e7d32; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: bold;}
 
+        /* Bottone delete */
         .btn-delete.admin-del { background: #b71c1c; color: white; border-color: #b71c1c; }
         .btn-delete { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 4px; cursor: pointer; font-size: 0.9rem; padding: 5px 10px; transition: all 0.2s; }
         .btn-delete:hover { background: #c62828; color: white; }
@@ -71,7 +72,7 @@
         <span style="font-size:0.8rem; display:block; margin-bottom:10px;">Gestisci data e giocatori</span>
         
         <div style="background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 10px;">
-            <label style="font-size:0.85rem; color:#666;">Cambia Giorno Partita (Override):</label>
+            <label style="font-size:0.85rem; color:#666;">Cambia Giorno Partita:</label>
             <div class="admin-controls">
                 <input type="date" id="data-manuale-input">
                 <button class="btn-admin btn-date" id="btn-imposta-data">Imposta</button>
@@ -125,36 +126,37 @@
     const db = getFirestore(app);
     const collPrenotazioni = "prenotazioni_calcetto";
     const collStats = "statistiche_giocatori";
-    const docConfig = doc(db, "config", "impostazioni_partita"); // Documento per salvare la data manuale
+    const docConfig = doc(db, "config", "impostazioni_partita");
 
     // --- VARIABILI GLOBALI ---
     const MAX_TITOLARI = 16;
     const MAX_RISERVE = 16;
     
     let dataPartitaTarget = ""; 
-    let dataManualeOverride = null; // Se c'è, vince su quella automatica
-    
+    let dataManualeOverride = null; 
     let iscrizioniAperte = false;
-    let prenotazioneUtenteLocale = localStorage.getItem('mio_id_prenotazione'); 
-    let unsubscribeList = null; // Per poter riavviare l'ascolto se cambia la data
+
+    // MODIFICA: Ora gestiamo un ARRAY di ID locali, non più una singola stringa
+    let miePrenotazioni = JSON.parse(localStorage.getItem('mie_prenotazioni_ids') || '[]');
+
+    let unsubscribeList = null;
     let lastSnapshotDocs = [];
 
-    // --- GESTIONE ADMIN ---
+    // --- ADMIN ---
     let isAdmin = false;
     let adminClicks = 0;
     const ADMIN_PASSWORD = "admin"; 
 
-    // Attivazione Admin
     document.getElementById('app-title').addEventListener('click', () => {
         adminClicks++;
         if (adminClicks === 3) {
-            const pwd = prompt("🔒 Accesso Admin: Inserisci Password");
+            const pwd = prompt("🔒 Password Admin:");
             if (pwd === ADMIN_PASSWORD) {
                 isAdmin = true;
                 document.getElementById('main-container').classList.add('admin-active'); 
                 document.getElementById('admin-panel').style.display = 'block'; 
                 alert("Modalità Admin ATTIVA");
-                updateUI(); // Rinfresca interfaccia
+                updateUI();
             } else {
                 alert("Password Errata!");
             }
@@ -162,8 +164,7 @@
         }
     });
 
-    // --- ASCOLTO CONFIGURAZIONE (DATA MANUALE) ---
-    // Questo ascolta se l'admin cambia la data. Se cambia, tutti i telefoni si aggiornano.
+    // --- ASCOLTO CONFIG DATA ---
     onSnapshot(docConfig, (docSnap) => {
         if (docSnap.exists() && docSnap.data().data_manuale) {
             dataManualeOverride = docSnap.data().data_manuale;
@@ -171,37 +172,32 @@
             document.getElementById('data-status').style.color = "#d32f2f";
         } else {
             dataManualeOverride = null;
-            document.getElementById('data-status').innerText = "Stato: Automatico (Lunedì)";
+            document.getElementById('data-status').innerText = "Stato: Automatico (Lun)";
             document.getElementById('data-status').style.color = "#2e7d32";
         }
-        // Ricalcola tutto con la nuova data (o quella automatica)
         calcolaDataEAvvia(); 
     });
 
-    // Azioni Pulsanti Data Admin
     document.getElementById('btn-imposta-data').addEventListener('click', async () => {
         const inputVal = document.getElementById('data-manuale-input').value;
         if(!inputVal) return alert("Scegli una data");
         await setDoc(docConfig, { data_manuale: inputVal });
-        alert("Data aggiornata! Tutti la vedranno ora.");
+        alert("Data aggiornata!");
     });
 
     document.getElementById('btn-reset-data').addEventListener('click', async () => {
-        await setDoc(docConfig, { data_manuale: null }); // Cancella override
-        alert("Tornato al calcolo automatico (Lunedì).");
+        await setDoc(docConfig, { data_manuale: null });
+        alert("Reset automatico effettuato.");
     });
 
 
-    // --- LOGICA PRINCIPALE (DATA + QUERY) ---
+    // --- LOGICA DATE ---
     function calcolaDataEAvvia() {
-        // 1. Determina la data target
         if (dataManualeOverride) {
-            // Usa quella forzata dall'Admin
             dataPartitaTarget = dataManualeOverride;
         } else {
-            // Usa calcolo automatico (Lunedì)
             const adesso = new Date();
-            const giornoSettimana = adesso.getDay(); // 0=Dom, 1=Lun
+            const giornoSettimana = adesso.getDay(); 
             let giorniAlLunedi = (1 + 7 - giornoSettimana) % 7;
             const dataLunedi = new Date(adesso);
             dataLunedi.setDate(adesso.getDate() + giorniAlLunedi);
@@ -211,23 +207,14 @@
             const d = String(dataLunedi.getDate()).padStart(2, '0');
             dataPartitaTarget = `${y}-${m}-${d}`;
         }
-
-        // 2. Calcola stato Apertura Iscrizioni
         aggiornaStatoIscrizioni();
-
-        // 3. Riavvia Listener Database (perché la data potrebbe essere cambiata)
         avviaAscoltoPrenotazioni();
     }
 
     function aggiornaStatoIscrizioni() {
         const adesso = new Date();
         const [y, m, d] = dataPartitaTarget.split('-').map(Number);
-        const dataMatch = new Date(y, m - 1, d); // Oggetto Date della partita
-        
-        // Calcolo finestra apertura (Giovedì precedente h12)
-        // Nota: Se la data è manuale, manteniamo comunque la logica "Apre il Giovedì prima di QUELLA data"
-        // oppure, se è manuale, potremmo volerla sempre aperta. 
-        // Per coerenza, manteniamo la regola: apre 4 giorni prima alle 12:00.
+        const dataMatch = new Date(y, m - 1, d);
         
         const dataApertura = new Date(dataMatch);
         dataApertura.setDate(dataMatch.getDate() - 4); 
@@ -237,12 +224,9 @@
         dataChiusura.setHours(23, 59, 59, 999);
 
         const infoBox = document.getElementById('info-box');
-        
-        // Se c'è Override, mostriamo anche il giorno della settimana per chiarezza
         const giorni = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
         const nomeGiorno = giorni[dataMatch.getDay()];
 
-        // Condizione: Aperto se Admin OPPURE siamo nel range temporale
         if (isAdmin || (adesso >= dataApertura && adesso <= dataChiusura)) {
             iscrizioniAperte = true;
             infoBox.className = "info-box";
@@ -256,10 +240,7 @@
     }
 
     function avviaAscoltoPrenotazioni() {
-        // Se c'era un ascolto attivo su una vecchia data, lo fermiamo
-        if (unsubscribeList) {
-            unsubscribeList();
-        }
+        if (unsubscribeList) unsubscribeList();
 
         const q = query(
             collection(db, collPrenotazioni), 
@@ -273,22 +254,17 @@
         });
     }
 
-    // Aggiorna lo stato temporale ogni minuto (per far scattare le ore 12:00)
     setInterval(aggiornaStatoIscrizioni, 60000);
 
 
-    // --- RENDERING INTERFACCIA ---
+    // --- UI RENDERING ---
     function updateUI() {
         const btn = document.getElementById('btn-prenota');
         
         if (iscrizioniAperte) {
-            if (!prenotazioneUtenteLocale && !isAdmin) {
-                btn.disabled = false;
-                btn.innerText = "Prenotati Ora";
-            } else if (!isAdmin) {
-                btn.disabled = true;
-                btn.innerText = "Sei già iscritto";
-            }
+            // MODIFICA: Il bottone è SEMPRE attivo se c'è spazio, anche se ho già prenotato qualcuno
+            btn.disabled = false;
+            btn.innerText = "Prenotati / Aggiungi Amico";
         } else {
             if (!isAdmin) {
                 btn.disabled = true;
@@ -296,7 +272,6 @@
             }
         }
         
-        // Se Admin, sblocca sempre
         if (isAdmin) {
             btn.disabled = false;
             btn.innerText = "Prenota (Admin Mode)";
@@ -310,15 +285,7 @@
         listaTitolari.innerHTML = '';
         listaRiserve.innerHTML = '';
 
-        updateUI(); // Aggiorna bottoni
-
-        // Controllo coerenza cache
-        const myPrenotazione = docs.find(d => d.id === prenotazioneUtenteLocale);
-        if (!myPrenotazione && !isAdmin) {
-            localStorage.removeItem('mio_id_prenotazione');
-            prenotazioneUtenteLocale = null;
-            updateUI();
-        }
+        updateUI();
 
         const countTitolari = Math.min(docs.length, MAX_TITOLARI);
         const countRiserve = Math.max(0, Math.min(docs.length - MAX_TITOLARI, MAX_RISERVE));
@@ -326,7 +293,8 @@
         document.getElementById('count-titolari').innerText = `${countTitolari}/${MAX_TITOLARI}`;
         document.getElementById('count-riserve').innerText = `${countRiserve}/${MAX_RISERVE}`;
 
-        if (iscrizioniAperte && !prenotazioneUtenteLocale && !isAdmin) {
+        // Blocco Liste Piene (globale)
+        if (iscrizioniAperte && !isAdmin) {
             if (docs.length >= (MAX_TITOLARI + MAX_RISERVE)) {
                 document.getElementById('btn-prenota').disabled = true;
                 document.getElementById('btn-prenota').innerText = "Liste Complete!";
@@ -336,13 +304,14 @@
         if(docs.length === 0) listaTitolari.innerHTML = '<div style="padding:15px;text-align:center;color:#999;font-style:italic;">Nessun iscritto.</div>';
 
         docs.forEach((p, i) => {
-            const isMe = (p.id === prenotazioneUtenteLocale);
+            // MODIFICA: Controllo se l'ID è nella mia lista di ID locali
+            const isMe = miePrenotazioni.includes(p.id);
             const showDelete = isMe || isAdmin;
             
             const html = `
                 <div class="player-left">
                     <span class="player-index">${i + 1}.</span>
-                    <span class="player-name">${p.nome} ${p.cognome} ${isMe ? '(Tu)' : ''}</span>
+                    <span class="player-name">${p.nome} ${p.cognome} ${isMe ? '<span style="color:#2e7d32; font-size:0.8rem;">(Tu)</span>' : ''}</span>
                 </div>
                 <div class="player-right">
                     <span class="player-time">${p.ora}</span>
@@ -363,7 +332,7 @@
         });
     }
 
-    // --- CARICAMENTO STATS ---
+    // --- STATS ---
     const qStats = query(collection(db, collStats), orderBy("presenze", "desc"));
     onSnapshot(qStats, (snapshot) => {
         const container = document.getElementById('lista-stats');
@@ -383,10 +352,10 @@
         });
     });
 
-    // --- AZIONI ---
+    // --- AZIONE: PRENOTA (MODIFICATA PER MULTIPLI) ---
     document.getElementById('btn-prenota').addEventListener('click', async () => {
         if (!iscrizioniAperte && !isAdmin) return;
-        if (prenotazioneUtenteLocale && !isAdmin) { alert("Sei già iscritto!"); return; }
+        // RIMOSSO BLOCCO "SEI GIÀ ISCRITTO"
 
         const nome = document.getElementById('nome').value.trim();
         const cognome = document.getElementById('cognome').value.trim();
@@ -403,13 +372,14 @@
         const statsId = `${nomeF.toLowerCase()}_${cognomeF.toLowerCase()}`.replace(/\s+/g, '');
         
         try {
+            // Check Doppioni (Sempre attivo se non Admin)
             if (!isAdmin) {
                 const qCheck = query(collection(db, collPrenotazioni), where("data_partita", "==", dataPartitaTarget), where("nome", "==", nomeF), where("cognome", "==", cognomeF));
                 const snapshotCheck = await getDocs(qCheck);
                 if (!snapshotCheck.empty) {
                     alert(`Attenzione: ${nomeCompleto} è già in lista!`);
                     btn.disabled = false;
-                    btn.innerText = "Prenotati Ora";
+                    btn.innerText = "Prenotati / Aggiungi Amico";
                     return; 
                 }
             }
@@ -423,9 +393,10 @@
                 timestamp: Date.now()
             });
 
+            // MODIFICA: Aggiungo l'ID alla lista locale, non sovrascrivo
             if (!isAdmin) {
-                localStorage.setItem('mio_id_prenotazione', docRef.id);
-                prenotazioneUtenteLocale = docRef.id;
+                miePrenotazioni.push(docRef.id);
+                localStorage.setItem('mie_prenotazioni_ids', JSON.stringify(miePrenotazioni));
             }
 
             const statsRef = doc(db, collStats, statsId);
@@ -436,22 +407,23 @@
                 await setDoc(statsRef, { nome_completo: nomeCompleto, presenze: 1 });
             }
 
+            // Pulisco i campi per permettere l'inserimento del prossimo amico
             document.getElementById('nome').value = '';
             document.getElementById('cognome').value = '';
             
-            if(isAdmin) {
-                btn.disabled = false; 
-                btn.innerText = "Prenota (Admin Mode)";
-            }
+            // Riattivo subito il bottone
+            btn.disabled = false; 
+            btn.innerText = "Prenotati / Aggiungi Amico";
 
         } catch (e) {
             console.error(e);
             alert("Errore.");
             btn.disabled = false;
-            btn.innerText = "Prenotati Ora";
+            btn.innerText = "Riprova";
         }
     });
 
+    // --- AZIONE: CANCELLA (MODIFICATA PER MULTIPLI) ---
     async function cancellaPrenotazione(idDoc, nomeCompletoOriginale) {
         let msg = "Sicuro di voler lasciare il posto?";
         if (isAdmin) msg = `ADMIN: Cancellare ${nomeCompletoOriginale}?`;
@@ -461,16 +433,17 @@
             const statsId = nomeCompletoOriginale.toLowerCase().split(' ').join('_');
             await deleteDoc(doc(db, collPrenotazioni, idDoc));
 
-            if (idDoc === prenotazioneUtenteLocale) {
-                localStorage.removeItem('mio_id_prenotazione');
-                prenotazioneUtenteLocale = null;
+            // MODIFICA: Rimuovo l'ID dalla lista locale
+            if (miePrenotazioni.includes(idDoc)) {
+                miePrenotazioni = miePrenotazioni.filter(id => id !== idDoc);
+                localStorage.setItem('mie_prenotazioni_ids', JSON.stringify(miePrenotazioni));
             }
+            
             const statsRef = doc(db, collStats, statsId);
             await updateDoc(statsRef, { presenze: increment(-1) });
         } catch (e) { console.error(e); }
     }
     
-    // Logica Email
     document.getElementById('btn-invia-email').addEventListener('click', () => {
         if (!lastSnapshotDocs.length) return alert("Lista vuota!");
         const [y,m,d] = dataPartitaTarget.split('-');
