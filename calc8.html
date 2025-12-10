@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prenotazione Calcetto</title>
+    <title>Prenotazione Calc8</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -65,7 +65,7 @@
 <body>
 
 <div class="container" id="main-container">
-    <h1 id="app-title" title="Clicca 3 volte per Admin">⚽ Partita Calcetto</h1>
+    <h1 id="app-title" title="Clicca 3 volte per Admin">⚽ Partita Calc8</h1>
     
     <div id="admin-panel" class="admin-panel">
         <strong>🔧 Pannello Admin</strong><br>
@@ -234,7 +234,7 @@
         } else {
             iscrizioniAperte = false;
             infoBox.className = "info-box status-closed";
-            infoBox.innerHTML = `🔴 Iscrizioni CHIUSE per ${nomeGiorno} ${formattaData(dataPartitaTarget)}.<br>Aprono Giovedì h12.`;
+            infoBox.innerHTML = `🔴 Iscrizioni CHIUSE per ${nomeGiorno} ${formattaData(dataPartitaTarget)}.<br>Apriranno Giovedì h12.`;
         }
         updateUI();
     }
