@@ -216,9 +216,20 @@
         const [y, m, d] = dataPartitaTarget.split('-').map(Number);
         const dataMatch = new Date(y, m - 1, d);
         
+        // --- MODIFICA INTELLIGENTE ---
+        // Vogliamo che apra SEMPRE di Giovedì alle 12:00,
+        // indipendentemente se si gioca Lunedì, Martedì o Mercoledì.
+        
+        const giornoPartita = dataMatch.getDay(); // 1=Lun, 2=Mar, 3=Mer...
+        let giorniAnticipo = 4; // Default per Lunedì (apre 4gg prima)
+
+        if (giornoPartita === 2) giorniAnticipo = 5; // Se Martedì, apre 5gg prima (Giovedì)
+        if (giornoPartita === 3) giorniAnticipo = 6; // Se Mercoledì, apre 6gg prima (Giovedì)
+        
         const dataApertura = new Date(dataMatch);
-        dataApertura.setDate(dataMatch.getDate() - 4); 
+        dataApertura.setDate(dataMatch.getDate() - giorniAnticipo); 
         dataApertura.setHours(12, 0, 0, 0); 
+        // -----------------------------
 
         const dataChiusura = new Date(dataMatch);
         dataChiusura.setHours(23, 59, 59, 999);
