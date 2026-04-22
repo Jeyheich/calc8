@@ -55,6 +55,9 @@
         .stats-container { margin-top: 40px; background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #eee; }
         .stat-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 0.9rem; border-bottom: 1px dashed #eee; }
         .badge-presenze { background: #2e7d32; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: bold;}
+        .badge-rating { background: #0288d1; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-left: 5px; font-weight: bold; }
+        .btn-valuta { background: #fbc02d; color: #333; border: 1px solid #f9a825; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: bold; transition: all 0.2s; }
+        .btn-valuta:hover { background: #f9a825; color: #000; }
 
         /* Bottone delete */
         .btn-delete.admin-del { background: #b71c1c; color: white; border-color: #b71c1c; }
@@ -138,6 +141,7 @@
 
     // MODIFICA: Ora gestiamo un ARRAY di ID locali, non più una singola stringa
     let miePrenotazioni = JSON.parse(localStorage.getItem('mie_prenotazioni_ids') || '[]');
+    let mieValutazioni = JSON.parse(localStorage.getItem('mie_valutazioni_ids') || '{}');
 
     let unsubscribeList = null;
     let lastSnapshotDocs = [];
@@ -326,7 +330,7 @@
                 </div>
                 <div class="player-right">
                     <span class="player-time">${p.ora}</span>
-                    ${showDelete ? `<button class="btn-delete ${isAdmin ? 'admin-del' : ''}" data-id="${p.id}" data-nome="${p.nome} ${p.cognome}">🗑️</button>` : ''}
+                    ${showDelete ? `<button class="btn-delete ${isAdmin ? 'admin-del' : ''}" data-id="${p.id}" data-nome="${p.nome}" data-cognome="${p.cognome}">🗑️</button>` : ''}
                 </div>
             `;
             
@@ -339,7 +343,10 @@
         });
 
         document.querySelectorAll('.btn-delete').forEach(btn => {
-            btn.addEventListener('click', (e) => cancellaPrenotazione(e.target.dataset.id, e.target.dataset.nome));
+            btn.addEventListener('click', (e) => {
+                const ds = e.currentTarget.dataset;
+                cancellaPrenotazione(ds.id, ds.nome, ds.cognome);
+            });
         });
     }
 
@@ -349,17 +356,34 @@
         const container = document.getElementById('lista-stats');
         container.innerHTML = '';
         let count = 0;
-        snapshot.forEach(doc => {
+        snapshot.forEach(docSnap => {
             if(count >= 100) return; 
-            const d = doc.data();
+            const d = docSnap.data();
+            const statsId = docSnap.id;
+            const avg = (d.voti_count && d.voti_count > 0) ? (d.voti_somma / d.voti_count).toFixed(1) : null;
+            const canRate = d.presenze > 5 && !mieValutazioni[statsId];
+
             const row = document.createElement('div');
             row.className = 'stat-row';
             row.innerHTML = `
-                <span>${count+1}. <b>${d.nome_completo}</b></span>
-                <span class="badge-presenze">${d.presenze}</span>
+                <span>
+                    ${count+1}. <b>${d.nome_completo}</b>
+                    ${avg ? `<span class="badge-rating">⭐ ${avg}</span>` : ''}
+                </span>
+                <span>
+                    ${canRate ? `<button class="btn-valuta" data-id="${statsId}" data-nome="${d.nome_completo}">Valuta</button>` : ''}
+                    <span class="badge-presenze">${d.presenze}</span>
+                </span>
             `;
             container.appendChild(row);
             count++;
+        });
+
+        document.querySelectorAll('.btn-valuta').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const ds = e.currentTarget.dataset;
+                valutaGiocatore(ds.id, ds.nome);
+            });
         });
     });
 
@@ -380,7 +404,7 @@
         const nomeF = formatName(nome);
         const cognomeF = formatName(cognome);
         const nomeCompleto = `${nomeF} ${cognomeF}`;
-        const statsId = `${nomeF.toLowerCase()}_${cognomeF.toLowerCase()}`.replace(/\s+/g, '');
+        const statsId = getStatsId(nomeF, cognomeF);
         
         try {
             // Check Doppioni (Sempre attivo se non Admin)
@@ -434,14 +458,54 @@
         }
     });
 
+    // --- AZIONE: VALUTA ---
+    async function valutaGiocatore(statsId, nomeCompleto) {
+        const voto = prompt(`Valuta ${nomeCompleto} da 1 a 10:`);
+        if (voto === null) return; // Annullato
+
+        const v = parseInt(voto);
+        if (isNaN(v) || v < 1 || v > 10) {
+            alert("Inserisci un numero valido tra 1 e 10");
+            return;
+        }
+
+        try {
+            const statsRef = doc(db, collStats, statsId);
+            const statsSnap = await getDoc(statsRef);
+
+            if (statsSnap.exists()) {
+                await updateDoc(statsRef, {
+                    voti_somma: increment(v),
+                    voti_count: increment(1)
+                });
+            } else {
+                // Should not happen if they have > 5 presenze, but for robustness:
+                await setDoc(statsRef, {
+                    nome_completo: nomeCompleto,
+                    presenze: 0,
+                    voti_somma: v,
+                    voti_count: 1
+                });
+            }
+
+            mieValutazioni[statsId] = true;
+            localStorage.setItem('mie_valutazioni_ids', JSON.stringify(mieValutazioni));
+            alert("Grazie per la valutazione!");
+        } catch (e) {
+            console.error(e);
+            alert("Errore durante la valutazione.");
+        }
+    }
+
     // --- AZIONE: CANCELLA (MODIFICATA PER MULTIPLI) ---
-    async function cancellaPrenotazione(idDoc, nomeCompletoOriginale) {
+    async function cancellaPrenotazione(idDoc, nome, cognome) {
+        const nomeCompleto = `${nome} ${cognome}`;
         let msg = "Sicuro di voler lasciare il posto?";
-        if (isAdmin) msg = `ADMIN: Cancellare ${nomeCompletoOriginale}?`;
+        if (isAdmin) msg = `ADMIN: Cancellare ${nomeCompleto}?`;
         if(!confirm(msg)) return;
 
         try {
-            const statsId = nomeCompletoOriginale.toLowerCase().split(' ').join('_');
+            const statsId = getStatsId(nome, cognome);
             await deleteDoc(doc(db, collPrenotazioni, idDoc));
 
             // MODIFICA: Rimuovo l'ID dalla lista locale
@@ -470,6 +534,10 @@
         }
         window.location.href = `mailto:?subject=Calcetto ${dataLeggibile}&body=${corpo}`;
     });
+
+    function getStatsId(nome, cognome) {
+        return `${nome.toLowerCase().trim()}_${cognome.toLowerCase().trim()}`.replace(/\s+/g, '');
+    }
 
     function formattaData(str) {
         if(!str) return "...";
